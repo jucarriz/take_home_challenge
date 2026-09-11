@@ -129,6 +129,15 @@ Custom Airflow image = official `apache/airflow:2.9.3-python3.11` +
 Java (JRE for PySpark) + `pyspark`, `great-expectations`, `minio`,
 `httpx`, `psycopg2-binary`, `pytest`, `fastapi`.
 
+### Bucket lifecycle
+
+The three MinIO buckets (`bronze`, `silver`, `gold`) are created on
+first boot by the `minio-init` shell container in docker-compose so
+the stack works with zero external tooling. The same buckets are also
+declared in [`terraform/`](terraform/) using the `aminueza/minio`
+provider — running `terraform apply` reconciles them idempotently.
+Both paths coexist; pick whichever you prefer.
+
 ## Gold data model (star schema)
 
 ```mermaid

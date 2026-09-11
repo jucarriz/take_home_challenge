@@ -132,6 +132,7 @@ customers sign up over time):
 │   └── run_pipeline.py         CLI to run the pipeline without Airflow
 ├── tests/                      16 pytest tests
 ├── data/raw/                   generated CSVs / JSONL / JSON
+├── terraform/                  IaC for the MinIO buckets (optional path)
 ├── docker-compose.yml          8 services (dwh, airflow-metadata, minio,
 │                               minio-init, blacklist-api, airflow-init,
 │                               airflow-webserver, airflow-scheduler)
@@ -194,9 +195,6 @@ because it materializes to Postgres.
   on the batch path. Wiring: a Kafka broker in docker-compose, a
   producer that emits `events.jsonl` line by line, a Spark
   Structured Streaming reader landing into bronze.
-- **Terraform** was also left out. A minimal resource declaring the
-  MinIO buckets, or an S3 bucket + a Postgres RDS instance, would
-  cover the cloud version.
 - **`fct_events` in gold.** Events (login / failed_pin /
   password_reset) are cleaned in silver but not materialized in gold.
   Adding them would let `fraud_signals.sql` combine an "authentication
@@ -209,6 +207,24 @@ because it materializes to Postgres.
   API + a file store would give a browseable data-quality dashboard.
 - **Partitioning of `fct_payments` in Postgres.** For higher volumes
   the fact table would benefit from `PARTITION BY RANGE (date_key)`.
+
+## Infrastructure as Code
+
+The MinIO buckets can be managed declaratively with Terraform instead
+of the `minio-init` shell container in compose. Both paths are
+idempotent and produce the same three buckets.
+
+```bash
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+See [`terraform/README.md`](terraform/README.md) for the Docker-based
+workflow (no local Terraform install required) and how to add new
+buckets. State is local (`terraform.tfstate`) and gitignored — no
+remote backend is wired since this is a local development stack.
 
 ## Env vars
 
@@ -227,6 +243,7 @@ deployments should override the credentials.
 - FastAPI 0.115 + Uvicorn (blacklist mock)
 - pytest 8.3.3
 - Docker Compose
+- Terraform 1.5+ (optional — declarative management of the MinIO buckets)
 
 ## Endpoints once the stack is up
 

@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and adjust if you're not running against the
+# default docker-compose stack. Values below are the same defaults
+# baked into variables.tf, shown here as documentation.
+#
+# terraform.tfvars is gitignored so credentials never leak.
+
+minio_endpoint = "localhost:9000"
+minio_user     = "minioadmin"
+minio_password = "minioadmin"
+bucket_names   = ["bronze", "silver", "gold"]
