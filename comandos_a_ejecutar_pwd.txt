@@ -1,227 +1,33 @@
-Smoke test de Fase 3
-0. Pre-requisitos
-
-cd <ruta-al-repo>
-git pull                       # traé fase 3 + este script
-python scripts/generate_data.py   # si data/raw/ está vacío
-1. Levantar todo el stack (nuevo build por el psycopg2-binary agregado)
-
-docker compose up -d --build
-Primera vez tarda 5–8 min (rebuild del image de Airflow con Java + Python deps ).
-
-Esperá hasta que todo esté verde:
-
-
-docker compose ps
-Todos los servicios deben decir running y los con healthcheck (healthy).
-
-2. Correr el pipeline end-to-end
-
-docker exec -it aurelia-airflow-scheduler python /opt/airflow/scripts/run_pipeline.py --ds 2024-03-15
-Primera ejecución tarda ~2–3 min extra por la descarga de los JARs de Spark (hadoop-aws, aws-java-sdk-bundle, postgresql) al cache Ivy. Vas a ver logs como:
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> 
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "SELECT 'dim_customer' AS tbl, COUNT(*) FROM dim_customer UNION ALL SELECT 'dim_merchant', COUNT(*) FROM dim_merchant UNION ALL SELECT 'dim_date', COUNT(*) FROM dim_date UNION ALL SELECT 'fct_payments', COUNT(*) FROM fct_payments UNION ALL SELECT 'agg_daily_kpis', COUNT(*) FROM agg_daily_kpis UNION ALL SELECT 'agg_cohort_ltv', COUNT(*) FROM agg_cohort_ltv ORDER BY 1;"
+      tbl       | count 
+----------------+-------
+ agg_cohort_ltv |     9
+ agg_daily_kpis |    91
+ dim_customer   |   500
+ dim_date       |    91
+ dim_merchant   |    50
+ fct_payments   |  5000
+(6 rows)
 
 
-2026-09-11 ... INFO run_pipeline: =========== BRONZE ===========
-2026-09-11 ... INFO spark.jobs.bronze_ingest: bronze customers -> s3a://bronze/customers/dt=2024-03-15/ (500 rows)
-2026-09-11 ... INFO spark.jobs.bronze_ingest: bronze merchants -> s3a://bronze/merchants/dt=2024-03-15/ (50 rows)
-...
-2026-09-11 ... INFO run_pipeline: =========== SILVER ===========
-2026-09-11 ... INFO spark.jobs.silver_clean: silver refresh done for ds=2024-03-15
-2026-09-11 ... INFO run_pipeline: =========== GOLD ===========
-2026-09-11 ... INFO spark.common.io: (varios inserts JDBC)
-2026-09-11 ... INFO run_pipeline: Pipeline finished for ds=2024-03-15
-3. Verificaciones
-MinIO (http://localhost:9001, minioadmin/minioadmin):
-
-Bucket bronze: 7 subcarpetas (customers, merchants, payments, chargebacks, fx_rates, events, blacklist), cada una con dt=2024-03-15/ conteniendo part-*.parquet.
-Bucket silver: mismas 7 subcarpetas, sin partición.
-Postgres — conteos por tabla:
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debugaurelia-postgres-dwh
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "SELECT date_key, total_payments, auth_rate, chargeback_rate, ROUND(gross_volume_usd, 2) AS gross_usd FROM agg_daily_kpis ORDER BY date_key LIMIT 5;"
+  date_key  | total_payments | auth_rate | chargeback_rate | gross_usd 
+------------+----------------+-----------+-----------------+-----------
+ 2024-01-01 |             61 |   0.75410 |         0.04348 |   2088.83
+ 2024-01-02 |             53 |   0.83019 |         0.04545 |   1615.98
+ 2024-01-03 |             57 |   0.70175 |         0.02500 |   1688.61
+ 2024-01-04 |             54 |   0.77778 |         0.04762 |   1246.42
+ 2024-01-05 |             58 |   0.82759 |         0.06250 |   1869.41
+(5 rows)
 
 
-docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "SELECT 'dim_customer' AS tbl, COUNT(*) FROM dim_customer UNION ALL SELECT 'dim_merchant', COUNT(*) FROM dim_merchant UNION ALL SELECT 'dim_date', COUNT(*) FROM dim_date UNION ALL SELECT 'fct_payments', COUNT(*) FROM fct_payments UNION ALL SELECT 'agg_daily_kpis', COUNT(*) FROM agg_daily_kpis UNION ALL SELECT 'agg_cohort_ltv', COUNT(*) FROM agg_cohort_ltv ORDER BY 1;"
-Esperado aproximado:
-
-Tabla	Rows
-dim_customer	500
-dim_merchant	50
-dim_date	91 (Jan 1 – Mar 31)
-fct_payments	~4950–5000 (pueden caer algunos por FX/FK)
-agg_daily_kpis	91 (uno por día)
-agg_cohort_ltv	6–9 (3 meses de cohorte × 1–3 months_since_signup)
-Sample de métricas:
-
-
-docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "SELECT date_key, total_payments, auth_rate, chargeback_rate, ROUND(gross_volume_usd, 2) AS gross_usd FROM agg_daily_kpis ORDER BY date_key LIMIT 5;"
-Esperado: auth_rate alrededor de 0.80–0.85 (nuestro seed usa 82% captured por default) y chargeback_rate alrededor de 0.03–0.05.
-
-4. Test de idempotencia (el más importante)
-
-docker exec -it aurelia-airflow-scheduler python /opt/airflow/scripts/run_pipeline.py --ds 2024-03-15
-Correlo dos veces. Los conteos de Postgres deben ser exactamente los mismos (no debe duplicar rows). Ese es el criterio de "idempotencia" que pide el PDF.
-
-5. Cleanup
-Si querés borrar todo y empezar de cero:
-
-
-docker compose down -v
-Cosas que pueden fallar y qué mirar
-Síntoma	Causa probable	Fix
-Timeout descargando JARs de Spark	Sin internet en el container o corta iterable	Reintentar; los JARs caché en /home/airflow/.ivy2/
-Connection refused a minio:9000	MinIO no healthy todavía	docker compose ps, esperá
-FATAL: password authentication failed for user "aurelia"	.env difiere del compose default	Chequeá .env
-payments.csv not found	Seed no corrió	python scripts/generate_data.py local
-Rows duplicadas en re-run	Bug de idempotencia en gold_marts	avisame el output exacto
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-LOGS: 
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose up -d --build
-[+] Building 676.0s (28/28) FINISHED                                                              
- => [internal] load local bake definitions                                                   0.0s
- => => reading from stdin 2.28kB                                                             0.0s
- => [airflow-webserver internal] load build definition from Dockerfile                       0.1s
- => => transferring dockerfile: 862B                                                         0.0s
- => [blacklist-api internal] load build definition from Dockerfile                           0.1s
- => => transferring dockerfile: 472B                                                         0.0s
- => [blacklist-api internal] load metadata for docker.io/library/python:3.11-slim            3.5s
- => [airflow-init internal] load metadata for docker.io/apache/airflow:2.9.3-python3.11      4.8s
- => [auth] library/python:pull token for registry-1.docker.io                                0.0s
- => [auth] apache/airflow:pull token for registry-1.docker.io                                0.0s
- => [blacklist-api internal] load .dockerignore                                              0.0s
- => => transferring context: 2B                                                              0.0s
- => [blacklist-api 1/5] FROM docker.io/library/python:3.11-slim@sha256:9534e5a8e315485d4061  0.0s
- => => resolve docker.io/library/python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a2  0.0s
- => [blacklist-api internal] load build context                                              0.0s
- => => transferring context: 64B                                                             0.0s
- => CACHED [blacklist-api 2/5] WORKDIR /app                                                  0.0s
- => CACHED [blacklist-api 3/5] COPY requirements.txt .                                       0.0s
- => CACHED [blacklist-api 4/5] RUN pip install --no-cache-dir -r requirements.txt            0.0s
- => CACHED [blacklist-api 5/5] COPY main.py .                                                0.0s
- => [blacklist-api] exporting to image                                                       0.1s
- => => exporting layers                                                                      0.0s
- => => exporting manifest sha256:e159366f7fdba7d0cb0b494445b6e38df2153047493e582cb79235a8a9  0.0s
- => => exporting config sha256:68d898f813016bc9d0126cef1a87b5484f1e1408d596849cdd34acba3049  0.0s
- => => exporting attestation manifest sha256:90314efe47369e8e17ff8f1587bc71b3c1b5157ad1638c  0.0s
- => => exporting manifest list sha256:80566d62ead792fa40d54f15730bfb42f46846a1a9566295ef8ed  0.0s
- => => naming to docker.io/aurelia/blacklist-api:local                                       0.0s
- => => unpacking to docker.io/aurelia/blacklist-api:local                                    0.0s
- => [blacklist-api] resolving provenance for metadata file                                   0.0s
- => [airflow-webserver internal] load .dockerignore                                          0.0s
- => => transferring context: 2B                                                              0.0s
- => [airflow-init internal] load build context                                               0.1s
- => => transferring context: 376B                                                            0.0s
- => [airflow-webserver 1/4] FROM docker.io/apache/airflow:2.9.3-python3.11@sha256:cc5fcb9  198.3s
- => => resolve docker.io/apache/airflow:2.9.3-python3.11@sha256:cc5fcb91e93e4dfe4fd8b1b53a9  0.0s
- => => sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1 32B / 32B     2.2s
- => => sha256:1860cf68ce67e395fc68761f33c68d157aa2682052634411dc7bcb1e003a6545 422B / 422B   2.2s
- => => sha256:52d9ef60a3c3d108bac5c3d35e81f3f36d271e361973a71a601b5fd6ae215629 423B / 423B   2.2s
- => => sha256:1f612cd96dd4dfd667138e2154d8dc6879932f1ca923bbc7227e71448c5b052a 114B / 114B   2.2s
- => => sha256:3e7476bb82fa6f2ebe4aa3679b000d95d614e6267abe303a9193e5189aab6 1.06kB / 1.06kB  0.2s
- => => sha256:98151276bd78060c713bd13dffb5c340704d5b3016d7bbe4c362f009ec185 5.22kB / 5.22kB  0.3s
- => => sha256:59d0aded76d43c45f8def9f7c8b27bbdf863175cceebb7c9d63806da2c6503ce 291B / 291B   0.5s
- => => sha256:2704d283b94faf47ce6753badb3d5a0ba0c511424c7ad7ae59b97a31de22056f 490B / 490B   0.5s
- => => sha256:804e344abf3027e337b7ee063eee7eaf8f34d57535a7d2e42f033ed9c4c2f 3.87kB / 3.87kB  0.4s
- => => sha256:f983fce4639db4ea06123eee1a5aa1cd902c6169f8b4bdae0bc3aab1152 18.49kB / 18.49kB  0.4s
- => => sha256:0f476cb3a61ac20066abfcf6606d7c6ee6ca237d32a11d3f03b1674588402 7.06kB / 7.06kB  0.3s
- => => sha256:75281a0898c789c75ada9980eac0d017fc18d4c1e2a794395dafcb4 247.88MB / 247.88MB  175.8s
- => => sha256:8a5cf0911796ee465fe05d6ab82ff3d1b066412b348afdf71a0480e5c8 22.04MB / 22.04MB  64.7s
- => => sha256:1ff940eb2461432da30e17181ccb403ca920e323d0c4c8644a48c36a8510c 2.03kB / 2.03kB  0.8s
- => => sha256:52c32768aa5c075a9ede555d4dca139c4c343044772ef30faf3764ccda6a8 2.31kB / 2.31kB  1.0s
- => => sha256:7fd3231ba6801c37c1388b9e9c7df3f1e6120353e54bd4b87f2efd0cb 88.48MB / 88.48MB  120.3s
- => => sha256:06dd6181452eca2d106c969f62da765d8f70ec5f460b8122a32ccaa53e54f 1.67kB / 1.67kB  0.6s
- => => sha256:e1558965ee47a72ec3c70592a93ae13e931a2d0f5719ab6c643c4a531c103 3.21MB / 3.21MB  3.1s
- => => sha256:d8393bf961f1ad054e82d4740c6557c77315c37cb25c19036e329d6194617c13 230B / 230B   0.3s
- => => sha256:11f0c4afa075fefa38e75f0bc033f3c60251827dfbecce64bf57bc67fc 12.87MB / 12.87MB  22.4s
- => => sha256:60462faabbc27679d4e1a907afda153c5f2294df5f752f0e706937779faa6 3.51MB / 3.51MB  8.5s
- => => sha256:efc2b5ad9eec05befa54239d53feeae3569ccbef689aa5e5dbfc25da6c 29.13MB / 29.13MB  51.9s
- => => extracting sha256:efc2b5ad9eec05befa54239d53feeae3569ccbef689aa5e5dbfc25da6c4df559    1.6s
- => => extracting sha256:60462faabbc27679d4e1a907afda153c5f2294df5f752f0e706937779faa6d22    0.3s
- => => extracting sha256:11f0c4afa075fefa38e75f0bc033f3c60251827dfbecce64bf57bc67fc3718f0    0.6s
- => => extracting sha256:d8393bf961f1ad054e82d4740c6557c77315c37cb25c19036e329d6194617c13    0.0s
- => => extracting sha256:e1558965ee47a72ec3c70592a93ae13e931a2d0f5719ab6c643c4a531c103236    0.4s
- => => extracting sha256:06dd6181452eca2d106c969f62da765d8f70ec5f460b8122a32ccaa53e54fc31    0.0s
- => => extracting sha256:7fd3231ba6801c37c1388b9e9c7df3f1e6120353e54bd4b87f2efd0cbf48079d    4.1s
- => => extracting sha256:52c32768aa5c075a9ede555d4dca139c4c343044772ef30faf3764ccda6a8f58    0.5s
- => => extracting sha256:1ff940eb2461432da30e17181ccb403ca920e323d0c4c8644a48c36a8510cd88    0.4s
- => => extracting sha256:8a5cf0911796ee465fe05d6ab82ff3d1b066412b348afdf71a0480e5c86dc7d7    1.5s
- => => extracting sha256:75281a0898c789c75ada9980eac0d017fc18d4c1e2a794395dafcb41b3b081f0   18.7s
- => => extracting sha256:0f476cb3a61ac20066abfcf6606d7c6ee6ca237d32a11d3f03b167458840202b    0.0s
- => => extracting sha256:f983fce4639db4ea06123eee1a5aa1cd902c6169f8b4bdae0bc3aab1152f1d00    0.0s
- => => extracting sha256:804e344abf3027e337b7ee063eee7eaf8f34d57535a7d2e42f033ed9c4c2fac6    0.0s
- => => extracting sha256:2704d283b94faf47ce6753badb3d5a0ba0c511424c7ad7ae59b97a31de22056f    0.0s
- => => extracting sha256:59d0aded76d43c45f8def9f7c8b27bbdf863175cceebb7c9d63806da2c6503ce    0.0s
- => => extracting sha256:98151276bd78060c713bd13dffb5c340704d5b3016d7bbe4c362f009ec1850a4    0.0s
- => => extracting sha256:3e7476bb82fa6f2ebe4aa3679b000d95d614e6267abe303a9193e5189aab6bb7    0.0s
- => => extracting sha256:1f612cd96dd4dfd667138e2154d8dc6879932f1ca923bbc7227e71448c5b052a    0.1s
- => => extracting sha256:52d9ef60a3c3d108bac5c3d35e81f3f36d271e361973a71a601b5fd6ae215629    0.0s
- => => extracting sha256:1860cf68ce67e395fc68761f33c68d157aa2682052634411dc7bcb1e003a6545    0.0s
- => => extracting sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1    0.0s
- => [airflow-init 2/4] RUN apt-get update     && apt-get install -y --no-install-recommend  63.3s
- => [airflow-webserver 3/4] COPY airflow/requirements.txt /tmp/aurelia-requirements.txt      0.3s
- => [airflow-webserver 4/4] RUN pip install --no-cache-dir -r /tmp/aurelia-requirements.t  319.6s
- => [airflow-scheduler] exporting to image                                                  84.0s
- => => exporting layers                                                                     34.0s
- => => exporting manifest sha256:cfa6f588038cb287217ddb9f5b4175ab67257bdcb30c1a28ab8ccd4f63  0.3s
- => => exporting config sha256:57325bd7aa518533160417143efb4e1afd3cd5430043c427ed2631afb777  0.2s
- => => exporting attestation manifest sha256:5b7a4430757aaa7929f8c730d77ef1a5d1bf2438e09761  0.2s
- => => exporting manifest list sha256:0bf865e544b8af9faeeddd657051d260ba736917cf859dfe75c5e  0.1s
- => => naming to docker.io/aurelia/airflow:local                                             0.0s
- => => unpacking to docker.io/aurelia/airflow:local                                         48.8s
- => [airflow-init] exporting to image                                                       84.0s
- => => exporting layers                                                                     34.0s
- => => exporting manifest sha256:611e7d6fd20af39ed2d60b7d85dee027a7fa5c8264f534c4786c1319cd  0.3s
- => => exporting config sha256:f14ddecc230e2897e5d9fa708d134e7eaea63d0f8b118caff61b66ecd72f  0.3s
- => => exporting attestation manifest sha256:b78ea3a104bf674c95b7b0395c5c366f91640d3f90fd0e  0.2s
- => => exporting manifest list sha256:78878cc07162ed6f11f1d774851bab889b192d18ce2d148af4fd3  0.1s
- => => naming to docker.io/aurelia/airflow:local                                             0.0s
- => => unpacking to docker.io/aurelia/airflow:local                                         48.8s
- => [airflow-webserver] exporting to image                                                  84.2s
- => => exporting layers                                                                     34.0s
- => => exporting manifest sha256:5e4ab86b4d976f432826a82601c4bac4bd1c4429dd6b8a275b7166765b  0.2s
- => => exporting config sha256:3415330d8fabed8d76e00d95aaa9c05daf0ab05b11ba7b5c772ab20145ad  0.3s
- => => exporting attestation manifest sha256:b5c3d80b798db27489e7b7ee607e88c616dca66e4d37e0  0.2s
- => => exporting manifest list sha256:ef89e89969eb4f5b892f7ed7a3c95b43c025572005adce0bd0986  0.2s
- => => naming to docker.io/aurelia/airflow:local                                             0.1s
- => => unpacking to docker.io/aurelia/airflow:local                                         48.9s
- => [airflow-init] resolving provenance for metadata file                                    0.8s
- => [airflow-scheduler] resolving provenance for metadata file                               0.4s
- => [airflow-webserver] resolving provenance for metadata file                               0.0s
-[+] up 14/14
- ✔ Image aurelia/blacklist-api:local    Built                                               676.3s
- ✔ Image aurelia/airflow:local          Built                                               676.5s
- ✔ Volume aurelia_postgres-dwh-data     Created                                               0.3s
- ✔ Network aurelia_default              Created                                               0.4s
- ✔ Volume aurelia_postgres-airflow-data Created                                               0.1s
- ✔ Volume aurelia_minio-data            Created                                               0.1s
- ✔ Container aurelia-postgres-airflow   Healthy                                              37.0s
- ✔ Container aurelia-postgres-dwh       Healthy                                              37.0s
- ✔ Container aurelia-blacklist-api      Healthy                                              37.0s
- ✔ Container aurelia-minio              Healthy                                              25.5s
- ✔ Container aurelia-minio-init         Exited                                               24.8s
- ✔ Container aurelia-airflow-init       Exited                                               44.6s
- ✔ Container aurelia-airflow-scheduler  Started                                              44.8s
- ✔ Container aurelia-airflow-webserver  Started
-
- PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose ps           
-NAME                        IMAGE                                      COMMAND                  SERVICE             CREATED              STATUS                        PORTS
-aurelia-airflow-scheduler   aurelia/airflow:local                      "/usr/bin/dumb-init …"   airflow-scheduler   About a minute ago   Up About a minute (healthy)   8080/tcp
-aurelia-airflow-webserver   aurelia/airflow:local                      "/usr/bin/dumb-init …"   airflow-webserver   About a minute ago   Up About a minute (healthy)   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-aurelia-blacklist-api       aurelia/blacklist-api:local                "uvicorn main:app --…"   blacklist-api       2 minutes ago        Up About a minute (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-aurelia-minio               minio/minio:RELEASE.2024-08-17T01-24-54Z   "/usr/bin/docker-ent…"   minio               2 minutes ago        Up About a minute (healthy)   0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
-aurelia-postgres-airflow    postgres:15-alpine                         "docker-entrypoint.s…"   postgres-airflow    2 minutes ago        Up About a minute (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-aurelia-postgres-dwh        postgres:15-alpine                         "docker-entrypoint.s…"   postgres-dwh        2 minutes ago        Up About a minute (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
-
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debugaurelia-postgres-dwh
+    Learn more at https://docs.docker.com/go/debug-cli/
 PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker exec -it aurelia-airflow-scheduler python /opt/airflow/scripts/run_pipeline.py --ds 2024-03-15
 :: loading settings :: url = jar:file:/home/airflow/.local/lib/python3.11/site-packages/pyspark/jars/ivy-2.5.1.jar!/org/apache/ivy/core/settings/ivysettings.xml
 Ivy Default Cache set to: /home/airflow/.ivy2/cache
@@ -229,24 +35,14 @@ The jars for the packages stored in: /home/airflow/.ivy2/jars
 org.apache.hadoop#hadoop-aws added as a dependency
 com.amazonaws#aws-java-sdk-bundle added as a dependency
 org.postgresql#postgresql added as a dependency
-:: resolving dependencies :: org.apache.spark#spark-submit-parent-188899f2-1dd4-4208-851b-077ed07bf407;1.0
+:: resolving dependencies :: org.apache.spark#spark-submit-parent-4b83fc43-a401-4bf4-b25f-e1387cb15ff3;1.0
         confs: [default]
         found org.apache.hadoop#hadoop-aws;3.3.4 in central
         found com.amazonaws#aws-java-sdk-bundle;1.12.262 in central
         found org.wildfly.openssl#wildfly-openssl;1.0.7.Final in central
         found org.postgresql#postgresql;42.7.3 in central
         found org.checkerframework#checker-qual;3.42.0 in central
-downloading https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar ...
-        [SUCCESSFUL ] org.apache.hadoop#hadoop-aws;3.3.4!hadoop-aws.jar (1195ms)
-downloading https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar ...
-        [SUCCESSFUL ] com.amazonaws#aws-java-sdk-bundle;1.12.262!aws-java-sdk-bundle.jar (79569ms)
-downloading https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.3/postgresql-42.7.3.jar...
-        [SUCCESSFUL ] org.postgresql#postgresql;42.7.3!postgresql.jar (385ms)
-downloading https://repo1.maven.org/maven2/org/wildfly/openssl/wildfly-openssl/1.0.7.Final/wildfly-openssl-1.0.7.Final.jar ...
-        [SUCCESSFUL ] org.wildfly.openssl#wildfly-openssl;1.0.7.Final!wildfly-openssl.jar (230ms)
-downloading https://repo1.maven.org/maven2/org/checkerframework/checker-qual/3.42.0/checker-qual-3.42.0.jar ...
-        [SUCCESSFUL ] org.checkerframework#checker-qual;3.42.0!checker-qual.jar (213ms)
-:: resolution report :: resolve 8476ms :: artifacts dl 81605ms
+:: resolution report :: resolve 389ms :: artifacts dl 20ms
         :: modules in use:
         com.amazonaws#aws-java-sdk-bundle;1.12.262 from central in [default]
         org.apache.hadoop#hadoop-aws;3.3.4 from central in [default]
@@ -257,269 +53,111 @@ downloading https://repo1.maven.org/maven2/org/checkerframework/checker-qual/3.4
         |                  |            modules            ||   artifacts   |
         |       conf       | number| search|dwnlded|evicted|| number|dwnlded|
         ---------------------------------------------------------------------
-        |      default     |   5   |   5   |   5   |   0   ||   5   |   5   |
+        |      default     |   5   |   0   |   0   |   0   ||   5   |   0   |
         ---------------------------------------------------------------------
-:: retrieving :: org.apache.spark#spark-submit-parent-188899f2-1dd4-4208-851b-077ed07bf407
+:: retrieving :: org.apache.spark#spark-submit-parent-4b83fc43-a401-4bf4-b25f-e1387cb15ff3
         confs: [default]
-        5 artifacts copied, 0 already retrieved (276711kB/1425ms)
-26/09/11 15:40:59 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+        0 artifacts copied, 5 already retrieved (0kB/14ms)
+26/09/11 15:53:57 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
 Setting default log level to "WARN".
 To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
-2026-09-11 15:41:09,000 [INFO] run_pipeline: =========== BRONZE ===========
-26/09/11 15:41:10 WARN MetricsConfig: Cannot locate configuration: tried hadoop-metrics2-s3a-file-system.properties,hadoop-metrics2.properties
-2026-09-11 15:41:15,387 [INFO] spark.jobs.bronze_ingest: bronze customers -> s3a://bronze/customers/dt=2024-03-15/ (500 rows)
-2026-09-11 15:41:16,290 [INFO] spark.jobs.bronze_ingest: bronze merchants -> s3a://bronze/merchants/dt=2024-03-15/ (50 rows)
-2026-09-11 15:41:17,615 [INFO] spark.jobs.bronze_ingest: bronze payments -> s3a://bronze/payments/dt=2024-03-15/ (5000 rows)
-2026-09-11 15:41:18,801 [INFO] spark.jobs.bronze_ingest: bronze chargebacks -> s3a://bronze/chargebacks/dt=2024-03-15/ (158 rows)
-2026-09-11 15:41:19,785 [INFO] spark.jobs.bronze_ingest: bronze fx_rates -> s3a://bronze/fx_rates/dt=2024-03-15/ (455 rows)
-2026-09-11 15:41:21,161 [INFO] spark.jobs.bronze_ingest: bronze events -> s3a://bronze/events/dt=2024-03-15/ (2000 rows)
-2026-09-11 15:41:21,305 [INFO] httpx: HTTP Request: GET http://blacklist-api:8000/v1/blacklist "HTTP/1.1 200 OK"
-2026-09-11 15:41:29,109 [INFO] spark.jobs.bronze_ingest: bronze blacklist -> s3a://bronze/blacklist/dt=2024-03-15/ (10 rows)
-2026-09-11 15:41:29,109 [INFO] run_pipeline: =========== SILVER ===========
-2026-09-11 15:41:36,438 [INFO] spark.jobs.silver_clean: silver refresh done for ds=2024-03-15
-2026-09-11 15:41:36,439 [INFO] run_pipeline: =========== GOLD ===========
-2026-09-11 15:41:37,378 [INFO] spark.jobs.gold_marts: Wiping existing gold rows (reverse-FK order)
-2026-09-11 15:41:37,413 [INFO] spark.jobs.gold_marts: Loading dims
-26/09/11 15:41:38 ERROR Executor: Exception in task 0.0 in stage 63.0 (TID 102)
-java.sql.BatchUpdateException: Batch entry 0 INSERT INTO dim_customer ("customer_id","signup_date","country","marketing_channel","cohort_month","is_blacklisted") VALUES (('bdd640fb-0667-4ad1-9c80-317fa3b1799d'),('2024-01-27 +00'),('AR'),('facebook'),('2024-01-01 +00'),('FALSE'::boolean)) was aborted: ERROR: column "customer_id" is of type uuid but expression is of type character varying
-  Hint: You will need to rewrite or cast the expression.
-  Position: 126  Call getNextException to see other errors in the batch.
-        at org.postgresql.jdbc.BatchResultHandler.handleError(BatchResultHandler.java:165)
-        at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:896)
-        at org.postgresql.jdbc.PgStatement.executeBatch(PgStatement.java:936)
-        at org.postgresql.jdbc.PgPreparedStatement.executeBatch(PgPreparedStatement.java:1733)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.savePartition(JdbcUtils.scala:751)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.$anonfun$saveTable$1(JdbcUtils.scala:902)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.$anonfun$saveTable$1$adapted(JdbcUtils.scala:901)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$2(RDD.scala:1039)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$2$adapted(RDD.scala:1039)
-        at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2438)
-        at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
-        at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
-        at org.apache.spark.scheduler.Task.run(Task.scala:141)
-        at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
-        at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
-        at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
-        at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
-        at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
-        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-        at java.base/java.lang.Thread.run(Thread.java:840)
-Caused by: org.postgresql.util.PSQLException: ERROR: column "customer_id" is of type uuid but expression is of type character varying
-  Hint: You will need to rewrite or cast the expression.
-  Position: 126
-        at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2725)
-        at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2412)
-        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:371)
-        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:329)
-        at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:893)
-        ... 19 more
-26/09/11 15:41:38 WARN TaskSetManager: Lost task 0.0 in stage 63.0 (TID 102) (eb59d12af41e executor driver): java.sql.BatchUpdateException: Batch entry 0 INSERT INTO dim_customer ("customer_id","signup_date","country","marketing_channel","cohort_month","is_blacklisted") VALUES (('bdd640fb-0667-4ad1-9c80-317fa3b1799d'),('2024-01-27 +00'),('AR'),('facebook'),('2024-01-01 +00'),('FALSE'::boolean)) was aborted: ERROR: column "customer_id" is of type uuid but expression is of type character varying
-  Hint: You will need to rewrite or cast the expression.
-  Position: 126  Call getNextException to see other errors in the batch.
-        at org.postgresql.jdbc.BatchResultHandler.handleError(BatchResultHandler.java:165)
-        at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:896)
-        at org.postgresql.jdbc.PgStatement.executeBatch(PgStatement.java:936)
-        at org.postgresql.jdbc.PgPreparedStatement.executeBatch(PgPreparedStatement.java:1733)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.savePartition(JdbcUtils.scala:751)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.$anonfun$saveTable$1(JdbcUtils.scala:902)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.$anonfun$saveTable$1$adapted(JdbcUtils.scala:901)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$2(RDD.scala:1039)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$2$adapted(RDD.scala:1039)
-        at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2438)
-        at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
-        at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
-        at org.apache.spark.scheduler.Task.run(Task.scala:141)
-        at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
-        at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
-        at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
-        at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
-        at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
-        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-        at java.base/java.lang.Thread.run(Thread.java:840)
-Caused by: org.postgresql.util.PSQLException: ERROR: column "customer_id" is of type uuid but expression is of type character varying
-  Hint: You will need to rewrite or cast the expression.
-  Position: 126
-        at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2725)
-        at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2412)
-        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:371)
-        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:329)
-        at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:893)
-        ... 19 more
-
-26/09/11 15:41:38 ERROR TaskSetManager: Task 0 in stage 63.0 failed 1 times; aborting job
-Traceback (most recent call last):
-  File "/opt/airflow/scripts/run_pipeline.py", line 68, in <module>
-    main()
-  File "/opt/airflow/scripts/run_pipeline.py", line 62, in main
-    gold_marts.build_gold(spark)
-  File "/opt/airflow/spark/jobs/gold_marts.py", line 178, in build_gold
-    io.write_gold(dim_customer, "dim_customer")
-  File "/opt/airflow/spark/common/io.py", line 127, in write_gold
-    .save()
-     ^^^^^^
-  File "/home/airflow/.local/lib/python3.11/site-packages/pyspark/sql/readwriter.py", line 1461, in save
-    self._jwrite.save()
-  File "/home/airflow/.local/lib/python3.11/site-packages/py4j/java_gateway.py", line 1322, in __call__
-    return_value = get_return_value(
-                   ^^^^^^^^^^^^^^^^^
-  File "/home/airflow/.local/lib/python3.11/site-packages/pyspark/errors/exceptions/captured.py",line 179, in deco
-    return f(*a, **kw)
-           ^^^^^^^^^^^
-  File "/home/airflow/.local/lib/python3.11/site-packages/py4j/protocol.py", line 326, in get_return_value
-    raise Py4JJavaError(
-py4j.protocol.Py4JJavaError: An error occurred while calling o600.save.
-: org.apache.spark.SparkException: Job aborted due to stage failure: Task 0 in stage 63.0 failed 1 times, most recent failure: Lost task 0.0 in stage 63.0 (TID 102) (eb59d12af41e executor driver): java.sql.BatchUpdateException: Batch entry 0 INSERT INTO dim_customer ("customer_id","signup_date","country","marketing_channel","cohort_month","is_blacklisted") VALUES (('bdd640fb-0667-4ad1-9c80-317fa3b1799d'),('2024-01-27 +00'),('AR'),('facebook'),('2024-01-01 +00'),('FALSE'::boolean)) wasaborted: ERROR: column "customer_id" is of type uuid but expression is of type character varying
-  Hint: You will need to rewrite or cast the expression.
-  Position: 126  Call getNextException to see other errors in the batch.
-        at org.postgresql.jdbc.BatchResultHandler.handleError(BatchResultHandler.java:165)
-        at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:896)
-        at org.postgresql.jdbc.PgStatement.executeBatch(PgStatement.java:936)
-        at org.postgresql.jdbc.PgPreparedStatement.executeBatch(PgPreparedStatement.java:1733)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.savePartition(JdbcUtils.scala:751)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.$anonfun$saveTable$1(JdbcUtils.scala:902)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.$anonfun$saveTable$1$adapted(JdbcUtils.scala:901)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$2(RDD.scala:1039)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$2$adapted(RDD.scala:1039)
-        at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2438)
-        at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
-        at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
-        at org.apache.spark.scheduler.Task.run(Task.scala:141)
-        at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
-        at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
-        at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
-        at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
-        at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
-        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-        at java.base/java.lang.Thread.run(Thread.java:840)
-Caused by: org.postgresql.util.PSQLException: ERROR: column "customer_id" is of type uuid but expression is of type character varying
-  Hint: You will need to rewrite or cast the expression.
-  Position: 126
-        at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2725)
-        at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2412)
-        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:371)
-        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:329)
-        at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:893)
-        ... 19 more
-        docker exec -it aurelia-airflow-scheduler python /opt/airflow/scripts/run_pipeline.py --ds 2024-03-15
-
-Driver stacktrace:
-        at org.apache.spark.scheduler.DAGScheduler.failJobAndIndependentStages(DAGScheduler.scala:2856)
-        at org.apache.spark.scheduler.DAGScheduler.$anonfun$abortStage$2(DAGScheduler.scala:2792)
-        at org.apache.spark.scheduler.DAGScheduler.$anonfun$abortStage$2$adapted(DAGScheduler.scala:2791)
-        at scala.collection.mutable.ResizableArray.foreach(ResizableArray.scala:62)
-        at scala.collection.mutable.ResizableArray.foreach$(ResizableArray.scala:55)
-        at scala.collection.mutable.ArrayBuffer.foreach(ArrayBuffer.scala:49)
-        at org.apache.spark.scheduler.DAGScheduler.abortStage(DAGScheduler.scala:2791)
-        at org.apache.spark.scheduler.DAGScheduler.$anonfun$handleTaskSetFailed$1(DAGScheduler.scala:1247)
-        at org.apache.spark.scheduler.DAGScheduler.$anonfun$handleTaskSetFailed$1$adapted(DAGScheduler.scala:1247)
-        at scala.Option.foreach(Option.scala:407)
-        at org.apache.spark.scheduler.DAGScheduler.handleTaskSetFailed(DAGScheduler.scala:1247)
-        at org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.doOnReceive(DAGScheduler.scala:3060)
-        at org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.onReceive(DAGScheduler.scala:2994)
-        at org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.onReceive(DAGScheduler.scala:2983)
-        at org.apache.spark.util.EventLoop$$anon$1.run(EventLoop.scala:49)
-        at org.apache.spark.scheduler.DAGScheduler.runJob(DAGScheduler.scala:989)
-        at org.apache.spark.SparkContext.runJob(SparkContext.scala:2398)
-        at org.apache.spark.SparkContext.runJob(SparkContext.scala:2419)
-        at org.apache.spark.SparkContext.runJob(SparkContext.scala:2438)
-        at org.apache.spark.SparkContext.runJob(SparkContext.scala:2463)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$1(RDD.scala:1039)
-        at org.apache.spark.rdd.RDDOperationScope$.withScope(RDDOperationScope.scala:151)
-        at org.apache.spark.rdd.RDDOperationScope$.withScope(RDDOperationScope.scala:112)
-        at org.apache.spark.rdd.RDD.withScope(RDD.scala:410)
-        at org.apache.spark.rdd.RDD.foreachPartition(RDD.scala:1037)
-        at org.apache.spark.sql.Dataset.$anonfun$foreachPartition$1(Dataset.scala:3514)
-        at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.java:23)
-        at org.apache.spark.sql.Dataset.$anonfun$withNewRDDExecutionId$1(Dataset.scala:4309)
-        at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId$6(SQLExecution.scala:125)
-        at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:201)
-        at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId$1(SQLExecution.scala:108)
-        at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:900)
-        at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:66)
-        at org.apache.spark.sql.Dataset.withNewRDDExecutionId(Dataset.scala:4307)
-        at org.apache.spark.sql.Dataset.foreachPartition(Dataset.scala:3514)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.saveTable(JdbcUtils.scala:901)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcRelationProvider.createRelation(JdbcRelationProvider.scala:70)
-        at org.apache.spark.sql.execution.datasources.SaveIntoDataSourceCommand.run(SaveIntoDataSourceCommand.scala:48)
-        at org.apache.spark.sql.execution.command.ExecutedCommandExec.sideEffectResult$lzycompute(commands.scala:75)
-        at org.apache.spark.sql.execution.command.ExecutedCommandExec.sideEffectResult(commands.scala:73)
-        at org.apache.spark.sql.execution.command.ExecutedCommandExec.executeCollect(commands.scala:84)
-        at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$1.$anonfun$applyOrElse$1(QueryExecution.scala:107)
-        at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId$6(SQLExecution.scala:125)
-        at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:201)
-        at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId$1(SQLExecution.scala:108)
-        at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:900)
-        at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:66)
-        at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$1.applyOrElse(QueryExecution.scala:107)
-        at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$1.applyOrElse(QueryExecution.scala:98)
-        at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:461)
-        at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:76)
-        at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:461)
-        at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:32)
-        at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:267)
-        at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:263)
-        at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:32)
-        at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:32)
-        at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:437)
-        at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:98)
-        at org.apache.spark.sql.execution.QueryExecution.commandExecuted$lzycompute(QueryExecution.scala:85)
-        at org.apache.spark.sql.execution.QueryExecution.commandExecuted(QueryExecution.scala:83)
-        at org.apache.spark.sql.execution.QueryExecution.assertCommandExecuted(QueryExecution.scala:142)
-        at org.apache.spark.sql.DataFrameWriter.runCommand(DataFrameWriter.scala:859)
-        at org.apache.spark.sql.DataFrameWriter.saveToV1Source(DataFrameWriter.scala:388)
-        at org.apache.spark.sql.DataFrameWriter.saveInternal(DataFrameWriter.scala:361)
-        at org.apache.spark.sql.DataFrameWriter.save(DataFrameWriter.scala:248)
-        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
-        at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-        at java.base/java.lang.reflect.Method.invoke(Method.java:569)
-        at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
-        at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
-        at py4j.Gateway.invoke(Gateway.java:282)
-        at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
-        at py4j.commands.CallCommand.execute(CallCommand.java:79)
-        at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:182)
-        at py4j.ClientServerConnection.run(ClientServerConnection.java:106)
-        at java.base/java.lang.Thread.run(Thread.java:840)
-Caused by: java.sql.BatchUpdateException: Batch entry 0 INSERT INTO dim_customer ("customer_id","signup_date","country","marketing_channel","cohort_month","is_blacklisted") VALUES (('bdd640fb-0667-4ad1-9c80-317fa3b1799d'),('2024-01-27 +00'),('AR'),('facebook'),('2024-01-01 +00'),('FALSE'::boolean)) was aborted: ERROR: column "customer_id" is of type uuid but expression is of type character varying
-  Hint: You will need to rewrite or cast the expression.
-  Position: 126  Call getNextException to see other errors in the batch.
-        at org.postgresql.jdbc.BatchResultHandler.handleError(BatchResultHandler.java:165)
-        at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:896)
-        at org.postgresql.jdbc.PgStatement.executeBatch(PgStatement.java:936)
-        at org.postgresql.jdbc.PgPreparedStatement.executeBatch(PgPreparedStatement.java:1733)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.savePartition(JdbcUtils.scala:751)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.$anonfun$saveTable$1(JdbcUtils.scala:902)
-        at org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils$.$anonfun$saveTable$1$adapted(JdbcUtils.scala:901)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$2(RDD.scala:1039)
-        at org.apache.spark.rdd.RDD.$anonfun$foreachPartition$2$adapted(RDD.scala:1039)
-        at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2438)
-        at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
-        at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
-        at org.apache.spark.scheduler.Task.run(Task.scala:141)
-        at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
-        at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
-        at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
-        at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
-        at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
-        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-        ... 1 more
-Caused by: org.postgresql.util.PSQLException: ERROR: column "customer_id" is of type uuid but expression is of type character varying
-  Hint: You will need to rewrite or cast the expression.
-  Position: 126
-        at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2725)
-        at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2412)
-        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:371)
-        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:329)
-        at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:893)
-        ... 19 more
-
-2026-09-11 15:41:39,210 [INFO] py4j.clientserver: Closing down clientserver connection
+2026-09-11 15:54:03,218 [INFO] run_pipeline: =========== BRONZE ===========
+26/09/11 15:54:04 WARN MetricsConfig: Cannot locate configuration: tried hadoop-metrics2-s3a-file-system.properties,hadoop-metrics2.properties
+2026-09-11 15:54:09,675 [INFO] spark.jobs.bronze_ingest: bronze customers -> s3a://bronze/customers/dt=2024-03-15/ (500 rows)
+2026-09-11 15:54:10,674 [INFO] spark.jobs.bronze_ingest: bronze merchants -> s3a://bronze/merchants/dt=2024-03-15/ (50 rows)
+2026-09-11 15:54:11,951 [INFO] spark.jobs.bronze_ingest: bronze payments -> s3a://bronze/payments/dt=2024-03-15/ (5000 rows)
+2026-09-11 15:54:12,872 [INFO] spark.jobs.bronze_ingest: bronze chargebacks -> s3a://bronze/chargebacks/dt=2024-03-15/ (158 rows)
+2026-09-11 15:54:13,951 [INFO] spark.jobs.bronze_ingest: bronze fx_rates -> s3a://bronze/fx_rates/dt=2024-03-15/ (455 rows)
+2026-09-11 15:54:15,401 [INFO] spark.jobs.bronze_ingest: bronze events -> s3a://bronze/events/dt=2024-03-15/ (2000 rows)
+2026-09-11 15:54:15,508 [INFO] httpx: HTTP Request: GET http://blacklist-api:8000/v1/blacklist "HTTP/1.1 200 OK"
+26/09/11 15:54:18 WARN MemoryManager: Total allocation exceeds 95.00% (1,020,054,720 bytes) of heap memory
+Scaling row group sizes to 95.00% for 8 writers
+2026-09-11 15:54:20,894 [INFO] spark.jobs.bronze_ingest: bronze blacklist -> s3a://bronze/blacklist/dt=2024-03-15/ (10 rows)
+2026-09-11 15:54:20,895 [INFO] run_pipeline: =========== SILVER ===========
+2026-09-11 15:54:28,704 [INFO] spark.jobs.silver_clean: silver refresh done for ds=2024-03-15
+2026-09-11 15:54:28,704 [INFO] run_pipeline: =========== GOLD ===========
+2026-09-11 15:54:29,735 [INFO] spark.jobs.gold_marts: Wiping existing gold rows (reverse-FK order)
+2026-09-11 15:54:29,922 [INFO] spark.jobs.gold_marts: Loading dims
+2026-09-11 15:54:32,189 [INFO] spark.jobs.gold_marts: Loading fct_payments
+26/09/11 15:54:32 WARN SparkStringUtils: Truncated the string representation of a plan since it was too large. This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+2026-09-11 15:54:33,711 [INFO] spark.jobs.gold_marts: Loading aggregates
+2026-09-11 15:54:35,166 [INFO] spark.jobs.gold_marts: gold refresh complete
+2026-09-11 15:54:35,166 [INFO] run_pipeline: Pipeline finished for ds=2024-03-15
+2026-09-11 15:54:35,167 [INFO] py4j.clientserver: Closing down clientserver connection
 
 What's next:
-    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug aurelia-airflow-scheduler
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debugaurelia-airflow-scheduler
     Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker exec -it aurelia-airflow-scheduler python /opt/airflow/scripts/run_pipeline.py --ds 2024-03-15
+:: loading settings :: url = jar:file:/home/airflow/.local/lib/python3.11/site-packages/pyspark/jars/ivy-2.5.1.jar!/org/apache/ivy/core/settings/ivysettings.xml
+Ivy Default Cache set to: /home/airflow/.ivy2/cache
+The jars for the packages stored in: /home/airflow/.ivy2/jars
+org.apache.hadoop#hadoop-aws added as a dependency
+com.amazonaws#aws-java-sdk-bundle added as a dependency
+org.postgresql#postgresql added as a dependency
+:: resolving dependencies :: org.apache.spark#spark-submit-parent-0224d7a5-e26b-427e-82f0-f5c669a42bf1;1.0
+        confs: [default]
+        found org.apache.hadoop#hadoop-aws;3.3.4 in central
+        found com.amazonaws#aws-java-sdk-bundle;1.12.262 in central
+        found org.wildfly.openssl#wildfly-openssl;1.0.7.Final in central
+        found org.postgresql#postgresql;42.7.3 in central
+        found org.checkerframework#checker-qual;3.42.0 in central
+:: resolution report :: resolve 434ms :: artifacts dl 18ms
+        :: modules in use:
+        com.amazonaws#aws-java-sdk-bundle;1.12.262 from central in [default]
+        org.apache.hadoop#hadoop-aws;3.3.4 from central in [default]
+        org.checkerframework#checker-qual;3.42.0 from central in [default]
+        org.postgresql#postgresql;42.7.3 from central in [default]
+        org.wildfly.openssl#wildfly-openssl;1.0.7.Final from central in [default]
+        ---------------------------------------------------------------------
+        |                  |            modules            ||   artifacts   |
+        |       conf       | number| search|dwnlded|evicted|| number|dwnlded|
+        ---------------------------------------------------------------------
+        |      default     |   5   |   0   |   0   |   0   ||   5   |   0   |
+        ---------------------------------------------------------------------
+:: retrieving :: org.apache.spark#spark-submit-parent-0224d7a5-e26b-427e-82f0-f5c669a42bf1
+        confs: [default]
+        0 artifacts copied, 5 already retrieved (0kB/11ms)
+26/09/11 15:54:48 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+2026-09-11 15:54:53,543 [INFO] run_pipeline: =========== BRONZE ===========
+26/09/11 15:54:55 WARN MetricsConfig: Cannot locate configuration: tried hadoop-metrics2-s3a-file-system.properties,hadoop-metrics2.properties
+2026-09-11 15:55:00,218 [INFO] spark.jobs.bronze_ingest: bronze customers -> s3a://bronze/customers/dt=2024-03-15/ (500 rows)
+2026-09-11 15:55:01,327 [INFO] spark.jobs.bronze_ingest: bronze merchants -> s3a://bronze/merchants/dt=2024-03-15/ (50 rows)
+2026-09-11 15:55:02,622 [INFO] spark.jobs.bronze_ingest: bronze payments -> s3a://bronze/payments/dt=2024-03-15/ (5000 rows)
+2026-09-11 15:55:03,600 [INFO] spark.jobs.bronze_ingest: bronze chargebacks -> s3a://bronze/chargebacks/dt=2024-03-15/ (158 rows)
+2026-09-11 15:55:04,496 [INFO] spark.jobs.bronze_ingest: bronze fx_rates -> s3a://bronze/fx_rates/dt=2024-03-15/ (455 rows)
+2026-09-11 15:55:05,535 [INFO] spark.jobs.bronze_ingest: bronze events -> s3a://bronze/events/dt=2024-03-15/ (2000 rows)
+2026-09-11 15:55:05,604 [INFO] httpx: HTTP Request: GET http://blacklist-api:8000/v1/blacklist "HTTP/1.1 200 OK"
+2026-09-11 15:55:09,871 [INFO] spark.jobs.bronze_ingest: bronze blacklist -> s3a://bronze/blacklist/dt=2024-03-15/ (10 rows)
+2026-09-11 15:55:09,872 [INFO] run_pipeline: =========== SILVER ===========
+2026-09-11 15:55:16,790 [INFO] spark.jobs.silver_clean: silver refresh done for ds=2024-03-15
+2026-09-11 15:55:16,791 [INFO] run_pipeline: =========== GOLD ===========
+2026-09-11 15:55:17,714 [INFO] spark.jobs.gold_marts: Wiping existing gold rows (reverse-FK order)
+2026-09-11 15:55:17,883 [INFO] spark.jobs.gold_marts: Loading dims
+2026-09-11 15:55:19,933 [INFO] spark.jobs.gold_marts: Loading fct_payments
+26/09/11 15:55:19 WARN SparkStringUtils: Truncated the string representation of a plan since it was too large. This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+2026-09-11 15:55:21,271 [INFO] spark.jobs.gold_marts: Loading aggregates
+2026-09-11 15:55:22,634 [INFO] spark.jobs.gold_marts: gold refresh complete
+2026-09-11 15:55:22,634 [INFO] run_pipeline: Pipeline finished for ds=2024-03-15
+2026-09-11 15:55:22,635 [INFO] py4j.clientserver: Closing down clientserver connection
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debugaurelia-airflow-scheduler
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> 
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose down -v
+[+] down 12/12
+ ✔ Container aurelia-airflow-webserver  Removed                                                    4.6s
+ ✔ Container aurelia-airflow-scheduler  Removed                                                    3.9s
+ ✔ Container aurelia-postgres-dwh       Removed                                                    1.2s
+ ✔ Container aurelia-airflow-init       Removed                                                    0.6s
+ ✔ Container aurelia-minio-init         Removed                                                    0.6s
+ ✔ Container aurelia-blacklist-api      Removed                                                    0.8s
+ ✔ Container aurelia-postgres-airflow   Removed                                                    0.7s
+ ✔ Container aurelia-minio              Removed                                                    0.8s
+ ✔ Volume aurelia_minio-data            Removed                                                    0.1s
+ ✔ Volume aurelia_postgres-dwh-data     Removed                                                    0.1s
+ ✔ Volume aurelia_postgres-airflow-data Removed                                                    0.2s
+ ✔ Network aurelia_default              Removed  
