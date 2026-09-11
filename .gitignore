@@ -55,6 +55,10 @@ airflow/airflow.db
 airflow/airflow-webserver.pid
 airflow/standalone_admin_password.txt
 
+# Spark Structured Streaming checkpoints (persist across runs but not versioned)
+airflow/checkpoints/*
+!airflow/checkpoints/.gitkeep
+
 # Spark
 spark-warehouse/
 metastore_db/

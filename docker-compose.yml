@@ -63,7 +63,10 @@ x-airflow-common: &airflow-common
     - ./tests:/opt/airflow/tests
     - ./blacklist_api:/opt/airflow/blacklist_api
     # Persistent checkpoint dir for Spark Structured Streaming.
-    - spark-checkpoints:/opt/airflow/checkpoints
+    # Bind mount (not a named volume) so the airflow user (uid 50000)
+    # can write to it — same trick as ./airflow/logs. A named volume
+    # ends up owned by root and mkdir fails on first .start().
+    - ./airflow/checkpoints:/opt/airflow/checkpoints
   user: "${AIRFLOW_UID:-50000}:0"
 
 services:
@@ -279,4 +282,3 @@ volumes:
   postgres-airflow-data:
   minio-data:
   kafka-data:
-  spark-checkpoints:
