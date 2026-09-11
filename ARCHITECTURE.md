@@ -114,6 +114,13 @@ flowchart LR
   (`bronze/events_stream/`) and dedupes on `event_id` — so if the
   streaming DAG never runs, silver still works from batch alone.
 
+Evidence — the topic being fed by the producer, and the Parquet files
+landed by the streaming consumer:
+
+![Kafka topic filled by the producer](docs/screenshots/kafka_ui_topic.png)
+
+![bronze/events_stream/ populated by Structured Streaming](docs/screenshots/minio_bronze_events_stream.png)
+
 ## Services (docker-compose)
 
 ```mermaid

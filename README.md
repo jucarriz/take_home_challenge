@@ -217,6 +217,9 @@ because it materializes to Postgres.
 The `aurelia_streaming` DAG runs every 5 minutes and demonstrates the
 event-driven side of the platform:
 
+![aurelia_streaming DAG in Airflow](docs/screenshots/airflow_streaming_dag.png)
+*Airflow DAG `aurelia_streaming` — two tasks (`produce_events` → `consume_stream`), scheduled `*/5 * * * *`.*
+
 1. **`produce_events`** — reads `data/raw/events.jsonl` and publishes
    each event to the Kafka topic `aurelia.events` with a 20 ms delay
    between messages (so the flow is visible in Kafka-UI). Uses
@@ -225,6 +228,18 @@ event-driven side of the platform:
    `trigger=availableNow`. Reads the topic from the last committed
    offset (checkpoint on a docker volume) and writes new messages as
    Parquet under `s3a://bronze/events_stream/`.
+
+Messages piling up in the Kafka topic after a few DAG runs, visible in
+Kafka-UI:
+
+![aurelia.events topic in Kafka-UI](docs/screenshots/kafka_ui_topic.png)
+*Topic `aurelia.events` — 26 000 messages, 6 MB (13 runs of the producer × 2 000 events).*
+
+And the Parquet part-files landed by Structured Streaming under
+`s3a://bronze/events_stream/`, one file per micro-batch:
+
+![events_stream/ folder in the bronze MinIO bucket](docs/screenshots/minio_bronze_events_stream.png)
+*`bronze/events_stream/` — 56 objects, ~925 KiB. Each `part-00000-…snappy.parquet` corresponds to one Spark micro-batch; `_spark_metadata/` is the Structured Streaming commit log.*
 
 The batch DAG `aurelia_daily` continues to ingest the same file into
 `s3a://bronze/events/dt=<ds>/`. Silver unions both sources and dedupes
