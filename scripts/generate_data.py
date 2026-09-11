@@ -129,7 +129,11 @@ def gen_payments(customers: list[dict], merchants: list[dict]) -> list[dict]:
     for i in range(N_PAYMENTS):
         customer = random.choice(customers)
         merchant = random.choice(merchants)
-        created_at = _rand_datetime_between(START_DATE, END_DATE)
+        # A payment cannot happen before the customer exists. Anchor the
+        # lower bound on the customer's signup_date (business rule that
+        # silver_clean enforces defensively too).
+        signup_dt = datetime.fromisoformat(customer["signup_date"]).replace(tzinfo=timezone.utc)
+        created_at = _rand_datetime_between(max(signup_dt, START_DATE), END_DATE)
         updated_at = created_at + timedelta(minutes=random.randint(0, 720))
         # Log-normal so most payments are small, with a long tail of big ones.
         raw_amount = random.lognormvariate(mu=3.5, sigma=1.2)

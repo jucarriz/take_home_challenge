@@ -97,13 +97,30 @@ def _enrich_payments(
     fx_rates: DataFrame,
     chargebacks: DataFrame,
 ) -> DataFrame:
-    """Enforce FKs, price in USD, denormalize chargeback info."""
-    valid_customer_ids = customers.select("customer_id")
+    """Enforce FKs, business-time rule, price in USD, denormalize chargebacks."""
+    customers_ref = customers.select("customer_id", "signup_date")
     valid_merchant_ids = merchants.select("merchant_id")
-    payments_valid = (
+    payments_joined = (
         payments
-        .join(valid_customer_ids, "customer_id", "inner")
+        .join(customers_ref, "customer_id", "inner")
         .join(valid_merchant_ids, "merchant_id", "inner")
+    )
+
+    # Business rule: a payment cannot precede its customer's signup date.
+    # The seed enforces this too, so in a healthy run this drops 0 rows;
+    # keeping the guard here as defense-in-depth against upstream drift.
+    invalid_time = payments_joined.filter(
+        F.to_date("created_at_utc") < F.col("signup_date")
+    ).count()
+    if invalid_time > 0:
+        LOG.warning(
+            "Dropping %d payments dated before their customer signup_date",
+            invalid_time,
+        )
+    payments_valid = (
+        payments_joined
+        .filter(F.to_date("created_at_utc") >= F.col("signup_date"))
+        .drop("signup_date")
     )
 
     fx = fx_rates.selectExpr(
