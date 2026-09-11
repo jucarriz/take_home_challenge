@@ -76,3 +76,8 @@ minio-data/
 
 # Postgres local volume
 postgres-data/
+
+# Internal planning / analysis / execution logs — kept locally, not shared
+analisis_repo_profesor.md
+comandos_a_ejecutar_pwd.txt
+plan_definitivo.md
