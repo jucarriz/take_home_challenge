@@ -1,29 +1,245 @@
-¿Es opcional testear Fase 6?
-Los archivos .sql son requisito del PDF ("Entregables: warehouse/queries/*.sql"), no opcionales. Lo que es "opcional" es testearlos automatizadamente: no vamos a escribir pytest para SQL puro (sería overkill — el test valdría lo mismo que la query en sí, y la única forma de que fallen es por typo, cosa que Postgres te dice al segundo).
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker composeps
+NAME                        IMAGE                                      COMMAND               SERVICE             CREATED          STATUS                    PORTS
+aurelia-airflow-scheduler   aurelia/airflow:local                      "/usr/bin/dumb-init …"   airflow-scheduler   46 minutes ago   Up 21 minutes (healthy)   8080/tcp
+aurelia-airflow-webserver   aurelia/airflow:local                      "/usr/bin/dumb-init …"   airflow-webserver   46 minutes ago   Up 21 minutes (healthy)   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+aurelia-blacklist-api       aurelia/blacklist-api:local                "uvicorn main:app --…"   blacklist-api       46 minutes ago   Up 46 minutes (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+aurelia-minio               minio/minio:RELEASE.2024-08-17T01-24-54Z   "/usr/bin/docker-ent…"   minio               46 minutes ago   Up 46 minutes (healthy)   0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+aurelia-postgres-airflow    postgres:15-alpine                         "docker-entrypoint.s…"   postgres-airflow    46 minutes ago   Up 46 minutes (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+aurelia-postgres-dwh        postgres:15-alpine                         "docker-entrypoint.s…"   postgres-dwh        46 minutes ago   Up 46 minutes (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> Get-Content warehouse/queries/auth_rate_daily.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+  date_key  | total_payments | captured_payments | auth_rate_pct | chargeback_rate_pct | gross_volume_usd | captured_volume_usd | unique_customers | unique_merchants 
+------------+----------------+-------------------+---------------+---------------------+------------------+---------------------+------------------+------------------
+ 2024-01-01 |             61 |                46 |         75.41 | 4.35 |          2088.83 |             1598.05 |               59 | 34
+ 2024-01-02 |             53 |                44 |         83.02 | 4.55 |          1615.98 |             1459.71 |               51 | 34
+ 2024-01-03 |             57 |                40 |         70.18 | 2.50 |          1688.61 |             1232.07 |               54 | 33
+ 2024-01-04 |             54 |                42 |         77.78 | 4.76 |          1246.42 |              888.56 |               52 | 35
+ 2024-01-05 |             58 |                48 |         82.76 | 6.25 |          1869.41 |             1590.02 |               56 | 36
+ 2024-01-06 |             61 |                47 |         77.05 | 0.00 |          2070.61 |             1727.33 |               58 | 37
+ 2024-01-07 |             56 |                43 |         76.79 | 6.98 |           892.52 |              715.80 |               52 | 33
+ 2024-01-08 |             48 |                40 |         83.33 | 0.00 |           977.48 |              806.28 |               48 | 31
+ 2024-01-09 |             66 |                45 |         68.18 | 6.67 |          1509.16 |              965.66 |               62 | 39
+ 2024-01-10 |             68 |                50 |         73.53 | 6.00 |          2300.48 |             1809.34 |               64 | 34
+ 2024-01-11 |             61 |                51 |         83.61 | 1.96 |          1902.75 |             1733.78 |               58 | 37
+ 2024-01-12 |             43 |                35 |         81.40 |11.43 |          1290.31 |             1009.94 |               40 | 31
+ 2024-01-13 |             58 |                46 |         79.31 | 2.17 |           918.85 |              436.09 |               55 | 34
+ 2024-01-14 |             57 |                54 |         94.74 | 7.41 |           903.30 |              899.90 |               54 | 33
+ 2024-01-15 |             62 |                45 |         72.58 | 2.22 |          2811.91 |             2284.81 |               58 | 34
+ 2024-01-16 |             47 |                38 |         80.85 | 2.63 |          1583.79 |             1574.26 |               44 | 33
+ 2024-01-17 |             64 |                53 |         82.81 | 0.00 |          2490.23 |             2320.27 |               59 | 36
+ 2024-01-18 |             60 |                47 |         78.33 | 8.51 |          1253.91 |             1015.64 |               59 | 34
+ 2024-01-19 |             64 |                50 |         78.13 | 4.00 |          1749.29 |             1537.39 |               60 | 36
+ 2024-01-20 |             57 |                45 |         78.95 | 2.22 |          2389.53 |             1907.22 |               55 | 35
+ 2024-01-21 |             59 |                49 |         83.05 | 2.04 |          1202.10 |             1013.34 |               56 | 34
+ 2024-01-22 |             68 |                56 |         82.35 | 5.36 |          1716.75 |             1058.22 |               63 | 35
+ 2024-01-23 |             45 |                34 |         75.56 | 8.82 |          1219.90 |              736.35 |               43 | 27
+ 2024-01-24 |             50 |                37 |         74.00 | 5.41 |          1955.66 |             1613.25 |               45 | 31
+ 2024-01-25 |             53 |                47 |         88.68 | 0.00 |          1786.22 |             1772.62 |               51 | 33
+ 2024-01-26 |             52 |                42 |         80.77 | 2.38 |          4355.09 |             4215.62 |               51 | 34
+ 2024-01-27 |             65 |                55 |         84.62 | 1.82 |          1162.25 |             1055.40 |               62 | 37
+ 2024-01-28 |             51 |                44 |         86.28 | 0.00 |           833.11 |              768.38 |               46 | 32
+ 2024-01-29 |             57 |                41 |         71.93 | 4.88 |          1726.96 |             1323.69 |               52 | 34
+ 2024-01-30 |             47 |                33 |         70.21 | 0.00 |          1058.19 |              716.19 |               46 | 32
+ 2024-01-31 |             53 |                38 |         71.70 | 2.63 |          1468.92 |             1080.46 |               51 | 34
+ 2024-02-01 |             60 |                42 |         70.00 | 2.38 |          1226.09 |              817.21 |               54 | 36
+ 2024-02-02 |             59 |                53 |         89.83 | 0.00 |          1415.86 |             1265.93 |               58 | 34
+ 2024-02-03 |             52 |                48 |         92.31 | 6.25 |          1595.74 |             1332.86 |               52 | 31
+ 2024-02-04 |             65 |                51 |         78.46 | 3.92 |          1131.78 |              826.57 |               62 | 37
+ 2024-02-05 |             54 |                48 |         88.89 | 8.33 |           819.82 |              581.31 |               51 | 34
+ 2024-02-06 |             47 |                41 |         87.23 | 2.44 |          2621.94 |              941.72 |               44 | 34
+ 2024-02-07 |             64 |                46 |         71.88 | 2.17 |          1906.15 |             1659.13 |               60 | 35
+ 2024-02-08 |             53 |                42 |         79.25 | 7.14 |          1891.62 |             1719.50 |               51 | 33
+ 2024-02-09 |             59 |                45 |         76.27 | 6.67 |          1781.53 |             1356.42 |               55 | 32
+ 2024-02-10 |             57 |                49 |         85.97 | 4.08 |          1748.22 |             1605.61 |               54 | 36
+ 2024-02-11 |             57 |                43 |         75.44 | 4.65 |          2090.47 |             1126.57 |               55 | 33
+ 2024-02-12 |             53 |                41 |         77.36 | 7.32 |          1336.31 |              768.43 |               50 | 34
+ 2024-02-13 |             48 |                38 |         79.17 | 0.00 |           647.81 |              526.11 |               45 | 30
+ 2024-02-14 |             56 |                44 |         78.57 | 9.09 |          1526.67 |             1440.42 |               53 | 34
+ 2024-02-15 |             50 |                41 |         82.00 | 4.88 |           927.70 |              641.06 |               47 | 30
+ 2024-02-16 |             44 |                34 |         77.27 | 5.88 |           921.44 |              874.75 |               41 | 26
+ 2024-02-17 |             56 |                49 |         87.50 | 6.12 |          1124.30 |             1063.47 |               52 | 37
+ 2024-02-18 |             62 |                49 |         79.03 | 8.16 |          2100.51 |             1829.98 |               59 | 35
+ 2024-02-19 |             43 |                35 |         81.40 | 5.71 |          1179.94 |              613.31 |               43 | 32
+ 2024-02-20 |             52 |                42 |         80.77 | 0.00 |          1681.61 |             1355.36 |               50 | 33
+ 2024-02-21 |             54 |                47 |         87.04 | 2.13 |          1057.09 |              886.27 |               51 | 34
+ 2024-02-22 |             61 |                47 |         77.05 | 6.38 |          2140.40 |             1194.66 |               59 | 38
+ 2024-02-23 |             46 |                30 |         65.22 | 3.33 |          1040.75 |              768.65 |               46 | 31
+ 2024-02-24 |             49 |                41 |         83.67 | 2.44 |          1538.17 |             1525.84 |               49 | 32
+ 2024-02-25 |             57 |                52 |         91.23 | 5.77 |          1731.53 |             1615.85 |               55 | 38
+ 2024-02-26 |             63 |                48 |         76.19 | 2.08 |          1811.50 |             1184.29 |               57 | 36
+ 2024-02-27 |             49 |                35 |         71.43 | 0.00 |          1451.20 |              939.12 |               46 | 34
+ 2024-02-28 |             56 |                42 |         75.00 | 4.76 |          2242.18 |             2008.99 |               56 | 34
+ 2024-02-29 |             50 |                36 |         72.00 | 0.00 |           926.57 |              796.59 |               46 | 32
+ 2024-03-01 |             46 |                38 |         82.61 | 5.26 |          1125.59 |             1013.07 |               44 | 32
+ 2024-03-02 |             65 |                57 |         87.69 | 7.02 |          2076.15 |             1768.75 |               63 | 38
+ 2024-03-03 |             74 |                65 |         87.84 | 6.15 |          1583.18 |             1236.61 |               72 | 37
+ 2024-03-04 |             62 |                46 |         74.19 | 2.17 |          1756.21 |              636.61 |               57 | 38
+ 2024-03-05 |             61 |                49 |         80.33 | 2.04 |          1024.03 |              827.36 |               57 | 35
+ 2024-03-06 |             67 |                53 |         79.10 | 0.00 |          1992.05 |             1862.20 |               61 | 36
+ 2024-03-07 |             64 |                51 |         79.69 | 7.84 |          2383.37 |             2019.12 |               62 | 35
+ 2024-03-08 |             42 |                30 |         71.43 | 0.00 |          1360.51 |              991.38 |               39 | 30
+ 2024-03-09 |             52 |                43 |         82.69 | 6.98 |           873.27 |              739.44 |               48 | 31
+ 2024-03-10 |             42 |                27 |         64.29 | 7.41 |          1724.93 |             1643.26 |               41 | 29
+ 2024-03-11 |             62 |                45 |         72.58 | 2.22 |          2137.20 |             1373.14 |               58 | 38
+ 2024-03-12 |             48 |                37 |         77.08 | 0.00 |          1607.93 |             1367.41 |               46 | 34
+ 2024-03-13 |             48 |                39 |         81.25 | 5.13 |          1155.00 |             1065.33 |               43 | 26
+ 2024-03-14 |             49 |                41 |         83.67 | 0.00 |          1431.07 |             1343.52 |               45 | 32
+ 2024-03-15 |             50 |                40 |         80.00 | 0.00 |          1026.00 |              843.00 |               46 | 34
+ 2024-03-16 |             47 |                39 |         82.98 | 0.00 |          1425.61 |             1133.13 |               46 | 33
+ 2024-03-17 |             54 |                42 |         77.78 | 9.52 |          1091.97 |              951.16 |               50 | 35
+ 2024-03-18 |             55 |                46 |         83.64 | 2.17 |          1188.59 |             1039.72 |               51 | 30
+ 2024-03-19 |             65 |                49 |         75.39 | 8.16 |          1950.33 |             1643.04 |               61 | 36
+ 2024-03-20 |             48 |                33 |         68.75 | 6.06 |          1089.47 |              763.68 |               45 | 30
+ 2024-03-21 |             40 |                35 |         87.50 | 5.71 |          1417.93 |             1349.06 |               37 | 30
+ 2024-03-22 |             53 |                46 |         86.79 | 0.00 |          1593.71 |             1547.16 |               52 | 32
+ 2024-03-23 |             46 |                36 |         78.26 | 2.78 |          1615.74 |             1367.36 |               44 | 33
+ 2024-03-24 |             66 |                56 |         84.85 | 0.00 |          1829.85 |             1388.12 |               59 | 37
+ 2024-03-25 |             49 |                38 |         77.55 | 0.00 |          1364.05 |             1279.82 |               48 | 33
+ 2024-03-26 |             53 |                45 |         84.91 | 6.67 |          1162.64 |             1118.31 |               48 | 31
+ 2024-03-27 |             49 |                37 |         75.51 | 8.11 |          2430.28 |             1824.88 |               48 | 34
+ 2024-03-28 |             40 |                36 |         90.00 | 0.00 |          2739.54 |             1524.44 |               37 | 28
+ 2024-03-29 |             55 |                39 |         70.91 | 5.13 |          1512.26 |             1152.52 |               52 | 32
+ 2024-03-30 |             58 |                39 |         67.24 | 2.56 |          2553.94 |             2193.06 |               55 | 33
+ 2024-03-31 |             59 |                42 |         71.19 |11.91 |          1685.38 |             1470.00 |               56 | 37
+(91 rows)
 
-Lo que sí se hace es verificarlas a mano una vez: correrlas contra tu Postgres poblado y confirmar que devuelven algo coherente. Es de yapa — te da los outputs que podés meter como screenshots en el README (criterio "Modelo analítico y DWH" del PDF).
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> Get-Content warehouse/queries/chargeback_rate_by_merchant.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+ merchant_id |    category     | risk_level | total_payments | captured_payments| chargebacks | gross_volume_usd | chargeback_rate_pct 
+-------------+-----------------+------------+----------------+-------------------+-------------+------------------+---------------------
+ m_0038      | retail          | medium     |            106 |                88|           8 |          2618.04 |                9.09
+ m_0029      | crypto          | low        |             87 |                69|           5 |          2665.58 |                7.25
+ m_0042      | gaming          | medium     |            116 |                91|           6 |          2475.88 |                6.59
+ m_0009      | travel          | medium     |            115 |                91|           6 |          4328.76 |                6.59
+ m_0048      | travel          | medium     |            107 |                92|           6 |          2597.49 |                6.52
+ m_0017      | saas            | low        |             98 |                78|           5 |          3112.21 |                6.41
+ m_0041      | gaming          | high       |            115 |                78|           5 |          5152.48 |                6.41
+ m_0019      | travel          | medium     |            103 |                80|           5 |          3171.64 |                6.25
+ m_0022      | retail          | medium     |            104 |                80|           5 |          3226.88 |                6.25
+ m_0049      | gaming          | low        |            108 |                97|           6 |          2324.09 |                6.19
+ m_0037      | gaming          | low        |            106 |                87|           5 |          2552.44 |                5.75
+ m_0034      | gaming          | medium     |             88 |                74|           4 |          3970.50 |                5.41
+ m_0035      | saas            | low        |             95 |                75|           4 |          1604.10 |                5.33
+ m_0011      | retail          | high       |            114 |                76|           4 |          2799.09 |                5.26
+ m_0046      | saas            | medium     |             91 |                77|           4 |          2778.51 |                5.19
+ m_0024      | travel          | low        |            100 |                82|           4 |          3173.01 |                4.88
+ m_0006      | travel          | low        |             80 |                62|           3 |          2154.04 |                4.84
+ m_0014      | digital_content | low        |            103 |                87|           4 |          3580.42 |                4.60
+ m_0027      | travel          | medium     |            103 |                88|           4 |          2759.76 |                4.55
+ m_0003      | groceries       | low        |             84 |                66|           3 |          1801.01 |                4.55
+(20 rows)
 
-Cómo probarlas (PowerShell, 2 min de trabajo)
-Necesitás Postgres corriendo con las tablas gold pobladas (o sea, después de haber corrido el DAG al menos una vez). Si acabás de hacer docker compose down -v, hay que levantar y triggerear el DAG primero.
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> Get-Content warehouse/queries/ltv_by_cohort.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+ cohort_month | cohort_customers | months_since_signup | active_customers | retention_pct | total_ltv_usd | avg_ltv_usd 
+--------------+------------------+---------------------+------------------+---------------+---------------+-------------
+ 2024-01-01   |              157 |                   0 |              149 |   94.90 |      13017.81 |       87.37
+ 2024-01-01   |              157 |                   1 |              142 |   90.45 |       9371.72 |       66.00
+ 2024-01-01   |              157 |                   2 |              145 |   92.36 |      12061.32 |       83.18
+ 2024-02-01   |              156 |                  -1 |              146 |   93.59 |      13044.67 |       89.35
+ 2024-02-01   |              156 |                   0 |              147 |   94.23 |      11442.34 |       77.84
+ 2024-02-01   |              156 |                   1 |              142 |   91.03 |      11936.10 |       84.06
+ 2024-03-01   |              187 |                  -2 |              178 |   95.19 |      16803.16 |       94.40
+ 2024-03-01   |              187 |                  -1 |              173 |   92.51 |      12451.94 |       71.98
+ 2024-03-01   |              187 |                   0 |              168 |   89.84 |      16478.21 |       98.08
+(9 rows)
 
-Si el stack ya está arriba:
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> Get-Content warehouse/queries/high_risk_merchants.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+ merchant_id |    category     | risk_level | total_payments | chargebacks | chargeback_rate_pct | gross_volume_usd | flag_risk_high | flag_category_risky | flag_chargeback_over_2pct 
+-------------+-----------------+------------+----------------+-------------+---------------------+------------------+----------------+---------------------+---------------------------
+ m_0038      | retail          | medium     |            106 |           8 |           9.09 |          2618.04 | f              | f                   | t
+ m_0029      | crypto          | low        |             87 |           5 |           7.25 |          2665.58 | f              | t                   | t
+ m_0009      | travel          | medium     |            115 |           6 |           6.59 |          4328.76 | f              | f                   | t
+ m_0042      | gaming          | medium     |            116 |           6 |           6.59 |          2475.88 | f              | t                   | t
+ m_0048      | travel          | medium     |            107 |           6 |           6.52 |          2597.49 | f              | f                   | t
+ m_0041      | gaming          | high       |            115 |           5 |           6.41 |          5152.48 | t              | t                   | t
+ m_0017      | saas            | low        |             98 |           5 |           6.41 |          3112.21 | f              | f                   | t
+ m_0022      | retail          | medium     |            104 |           5 |           6.25 |          3226.88 | f              | f                   | t
+ m_0019      | travel          | medium     |            103 |           5 |           6.25 |          3171.64 | f              | f                   | t
+ m_0049      | gaming          | low        |            108 |           6 |           6.19 |          2324.09 | f              | t                   | t
+ m_0037      | gaming          | low        |            106 |           5 |           5.75 |          2552.44 | f              | t                   | t
+ m_0034      | gaming          | medium     |             88 |           4 |           5.41 |          3970.50 | f              | t                   | t
+ m_0035      | saas            | low        |             95 |           4 |           5.33 |          1604.10 | f              | f                   | t
+ m_0011      | retail          | high       |            114 |           4 |           5.26 |          2799.09 | t              | f                   | t
+ m_0046      | saas            | medium     |             91 |           4 |           5.19 |          2778.51 | f              | f                   | t
+ m_0024      | travel          | low        |            100 |           4 |           4.88 |          3173.01 | f              | f                   | t
+ m_0006      | travel          | low        |             80 |           3 |           4.84 |          2154.04 | f              | f                   | t
+ m_0014      | digital_content | low        |            103 |           4 |           4.60 |          3580.42 | f              | f                   | t
+ m_0027      | travel          | medium     |            103 |           4 |           4.55 |          2759.76 | f              | f                   | t
+ m_0003      | groceries       | low        |             84 |           3 |           4.55 |          1801.01 | f              | f                   | t
+ m_0021      | digital_content | low        |            109 |           4 |           4.49 |          3305.07 | f              | f                   | t
+ m_0050      | digital_content | medium     |            110 |           4 |           4.49 |          2593.15 | f              | f                   | t
+ m_0004      | gaming          | low        |             90 |           3 |           4.41 |          3119.54 | f              | t                   | t
+ m_0036      | retail          | low        |             91 |           3 |           4.35 |          2645.73 | f              | f                   | t
+ m_0018      | digital_content | medium     |             82 |           3 |           4.29 |          2160.99 | f              | f                   | t
+ m_0030      | retail          | low        |             92 |           3 |           4.00 |          3929.60 | f              | f                   | t
+ m_0013      | crypto          | medium     |             92 |           3 |           3.90 |          1946.43 | f              | t                   | t
+ m_0039      | groceries       | low        |             94 |           3 |           3.80 |          1828.21 | f              | f                   | t
+ m_0012      | saas            | low        |            103 |           3 |           3.70 |          2561.36 | f              | f                   | t
+ m_0032      | travel          | low        |             98 |           3 |           3.66 |          3014.77 | f              | f                   | t
+ m_0026      | saas            | low        |            105 |           3 |           3.45 |          2573.47 | f              | f                   | t
+ m_0002      | crypto          | high       |             94 |           2 |           3.39 |          1586.78 | t              | t                   | t
+ m_0028      | saas            | low        |            110 |           3 |           3.30 |          1917.63 | f              | f                   | t
+ m_0047      | saas            | low        |            111 |           3 |           3.26 |          3472.91 | f              | f                   | t
+ m_0007      | gaming          | high       |            106 |           2 |           3.13 |          2954.90 | t              | t                   | t
+ m_0001      | saas            | high       |            100 |           2 |           2.86 |          3256.59 | t              | f                   | t
+ m_0016      | saas            | low        |            109 |           2 |           2.35 |          3560.09 | f              | f                   | t
+ m_0045      | digital_content | medium     |            105 |           2 |           2.35 |          2856.01 | f              | f                   | t
+ m_0025      | retail          | medium     |            107 |           2 |           2.15 |          2844.29 | f              | f                   | t
+ m_0008      | gaming          | high       |            110 |           1 |           1.52 |          2589.59 | t              | t                   | f
+ m_0043      | crypto          | high       |             98 |           1 |           1.43 |          3087.65 | t              | t                   | f
+ m_0040      | gaming          | medium     |             91 |           1 |           1.32 |          4028.20 | f              | t                   | f
+ m_0015      | gaming          | medium     |             83 |           0 |           0.00 |          1394.24 | f              | t                   | f
+(43 rows)
 
-
-Get-Content warehouse/queries/auth_rate_daily.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
-Deberías ver 91 filas (una por día, de 2024-01-01 a 2024-03-31).
-
-
-Get-Content warehouse/queries/chargeback_rate_by_merchant.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
-Deberías ver hasta 20 merchants ordenados por chargeback_rate desc.
-
-
-Get-Content warehouse/queries/ltv_by_cohort.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
-Deberías ver 9 filas (3 cohortes × 1-3 meses de retention).
-
-
-Get-Content warehouse/queries/high_risk_merchants.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
-Deberías ver merchants con al menos un flag = true.
-
-
-Get-Content warehouse/queries/fraud_signals.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
-Deberías ver hasta 50 customers, ordenados por signals_triggered desc (los que disparen 3 señales primero).
+PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> Get-Content warehouse/queries/fraud_signals.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+             customer_id              | country | cohort_month | total_payments | chargebacks | total_volume_usd | risky_volume_pct | signal_blacklist | signal_multi_chargeback | signal_risky_merchants | signals_triggered 
+--------------------------------------+---------+--------------+----------------+-------------+------------------+------------------+------------------+-------------------------+------------------------+-------------------
+ 3f897142-fe71-4b14-95ce-6a664dc82a1e | US      | 2024-01-01   |             16 |           2 |           666.93 |            35.31 | f                | t               | t                      |                 2
+ 3f4df561-f319-4125-87f1-94f9c1156d6d | MX      | 2024-01-01   |             12 |           0 |           546.68 |            66.82 | t                | f               | t                      |                 2
+ 3b8faa18-37f8-488b-97fc-695a07a0ca6e | BR      | 2024-02-01   |             14 |           2 |           472.34 |            41.74 | f                | t               | t                      |                 2
+ 2095eef6-8ded-49fb-8bb0-0f20b27c4026 | US      | 2024-01-01   |             19 |           2 |           366.09 |            48.92 | f                | t               | t                      |                 2
+ b41c504f-e346-4415-a526-7a2bec50ace4 | AR      | 2024-03-01   |              9 |           2 |           317.87 |            87.80 | f                | t               | t                      |                 2
+ edd877c8-9be7-4737-86b8-92318e867f3c | MX      | 2024-03-01   |             10 |           0 |           304.84 |            30.78 | t                | f               | t                      |                 2
+ b4a69f3c-8d3a-4d99-b11c-21c9bdc14f1f | US      | 2024-02-01   |             13 |           2 |           259.57 |            61.58 | f                | t               | t                      |                 2
+ d342af08-0a8b-45b4-9049-4583ec86a890 | AR      | 2024-03-01   |             12 |           0 |           252.25 |            38.16 | t                | f               | t                      |                 2
+ 06f028ff-a9ba-4a27-907b-fe36978648f8 | BR      | 2024-01-01   |              5 |           0 |           186.23 |            97.72 | t                | f               | t                      |                 2
+ 366eb16f-508e-4ad7-b7c9-3acfe059a0ee | US      | 2024-03-01   |             12 |           0 |           145.64 |            87.08 | t                | f               | t                      |                 2
+ 5a8aaeca-1a50-4ec3-aabc-25fa3fe12e47 | US      | 2024-03-01   |             13 |           2 |           113.17 |            81.15 | f                | t               | t                      |                 2
+ fb10987f-20ac-4703-ab67-146a77a6e17c | US      | 2024-03-01   |              4 |           0 |            76.82 |            91.04 | t                | f               | t                      |                 2
+ 98874bfe-c136-4c65-ae2a-e3413f59e4f2 | MX      | 2024-03-01   |              6 |           2 |            60.54 |            92.74 | f                | t               | t                      |                 2
+ 2713582c-f41e-43ac-9fd2-31094140752c | CL      | 2024-03-01   |             19 |           2 |          1852.97 |             4.17 | f                | t               | f                      |                 1
+ e2acf72f-9e57-4f7a-a0ee-89aed453dd32 | US      | 2024-03-01   |             19 |           1 |          1648.79 |            84.45 | f                | f               | t                      |                 1
+ 22bf18f5-1f65-4a87-b33e-e3447dbf4bc1 | AR      | 2024-03-01   |              8 |           0 |          1385.53 |            88.16 | f                | f               | t                      |                 1
+ 7cfc9b79-3875-494c-a5d6-f6e69a6ec2f5 | AR      | 2024-01-01   |             11 |           0 |          1166.64 |            75.73 | f                | f               | t                      |                 1
+ 7ff4cec6-e7b7-44c6-9631-2a801c612ec2 | US      | 2024-02-01   |             16 |           0 |           990.24 |            44.70 | f                | f               | t                      |                 1
+ 6cd66193-c746-4f59-9b49-4e15e2add909 | AR      | 2024-01-01   |             20 |           0 |           918.35 |            69.89 | f                | f               | t                      |                 1
+ 2253e706-87ad-4b26-8eaa-58416aa0426d | AR      | 2024-02-01   |             15 |           1 |           885.00 |            64.65 | f                | f               | t                      |                 1
+ adb14670-ad9f-400d-8882-d73c1c6345ab | US      | 2024-02-01   |             12 |           0 |           862.33 |            81.84 | f                | f               | t                      |                 1
+ 7d5911c6-a8f1-4091-bfb8-102d9475dbc9 | AR      | 2024-03-01   |             10 |           0 |           860.85 |            67.35 | f                | f               | t                      |                 1
+ 56abf2f1-43d8-4870-b81d-baa1c8120a8e | BR      | 2024-03-01   |             14 |           0 |           831.58 |            23.62 | t                | f               | f                      |                 1
+ 2303f6c6-d69d-42f1-ae4c-84ffa8c01f05 | AR      | 2024-03-01   |             10 |           0 |           828.53 |            61.49 | f                | f               | t                      |                 1
+ edcd465e-3638-4821-b6e0-7cc06c52c49f | MX      | 2024-02-01   |             13 |           3 |           819.92 |             7.91 | f                | t               | f                      |                 1
+ 32ebd689-9be5-48c7-81f6-31d4a39231a7 | US      | 2024-01-01   |             12 |           1 |           818.35 |            77.11 | f                | f               | t                      |                 1
+ 926bffa5-3e24-4fbf-ba69-8cd2fe2390f3 | AR      | 2024-02-01   |             14 |           1 |           788.51 |            30.16 | f                | f               | t                      |                 1
+ 614ff3d7-19db-4ad0-9dd1-dfb23b982ef8 | US      | 2024-01-01   |             14 |           1 |           701.70 |            47.62 | f                | f               | t                      |                 1
+ f758dce2-0556-4aea-a7b0-32831d7c0098 | AR      | 2024-02-01   |             13 |           0 |           686.53 |            66.52 | f                | f               | t                      |                 1
+ 28e213bc-e6fd-47af-9d84-caccf6729464 | AR      | 2024-03-01   |             10 |           2 |           682.89 |             6.21 | f                | t               | f                      |                 1
+ 8f158449-4f40-422f-95b0-2530f020e992 | BR      | 2024-02-01   |             11 |           0 |           656.36 |            92.57 | f                | f               | t                      |                 1
+ 39c1e262-f76c-4ede-8110-12662408a6dc | BR      | 2024-03-01   |             11 |           1 |           643.32 |            43.92 | f                | f               | t                      |                 1
+ 2e183554-cae2-4e66-ae8a-781390e0a95b | AR      | 2024-01-01   |             12 |           1 |           639.68 |            52.30 | f                | f               | t                      |                 1
+ bdd640fb-0667-4ad1-9c80-317fa3b1799d | AR      | 2024-01-01   |             13 |           0 |           633.01 |            70.19 | f                | f               | t                      |                 1
+ 72ecf16e-c8a7-43e9-bfa0-16c2c09cb506 | US      | 2024-01-01   |             13 |           1 |           619.46 |            87.39 | f                | f               | t                      |                 1
+ c696f5e6-4944-451b-a726-be23e776b886 | AR      | 2024-03-01   |             12 |           1 |           618.49 |            38.78 | f                | f               | t                      |                 1
+ e1cde87f-ec95-4f87-ae5e-c36572eb7474 | BR      | 2024-02-01   |             13 |           0 |           587.21 |            47.41 | f                | f               | t                      |                 1
+ 8441aefd-0299-436a-8e48-522346b98991 | AR      | 2024-01-01   |              8 |           0 |           586.03 |            95.78 | f                | f               | t                      |                 1
+ 5ff595ea-5bc4-40f1-8b1a-269b0e5dd462 | AR      | 2024-02-01   |             14 |           1 |           577.31 |            48.43 | f                | f               | t                      |                 1
+ 827050a8-2369-4584-bf5e-9ff0ff50bde4 | AR      | 2024-02-01   |             10 |           1 |           573.94 |            58.11 | f                | f               | t                      |                 1
+ 7b70c3b8-a81f-4ec3-a79c-658a36760ce5 | MX      | 2024-01-01   |             15 |           0 |           524.90 |            36.61 | f                | f               | t                      |                 1
+ b4adaf89-0ff1-4a9f-ba37-0623bc5fd4dd | US      | 2024-01-01   |             15 |           1 |           520.60 |            87.27 | f                | f               | t                      |                 1
+ 63119aca-848a-4440-bfc1-58582fa0d842 | US      | 2024-03-01   |             10 |           0 |           520.25 |            42.61 | f                | f               | t                      |                 1
+ 95da75c1-a211-40f9-9fd3-4579466772ce | BR      | 2024-02-01   |             13 |           1 |           512.76 |            49.95 | f                | f               | t                      |                 1
+ ef4c5119-8da5-439b-82c2-17970426fcc9 | US      | 2024-02-01   |             11 |           0 |           501.28 |            25.06 | t                | f               | f                      |                 1
+ c6b469ef-b74e-4a93-9027-5b532285b2ef | AR      | 2024-02-01   |             16 |           0 |           497.37 |            54.64 | f                | f               | t                      |                 1
+ cdd0b4d4-5542-47de-b6ad-f48b2314d0c8 | US      | 2024-02-01   |             14 |           0 |           496.88 |            75.85 | f                | f               | t                      |                 1
+ 8cbfedb0-f264-4ccc-b9ac-1b1ea8e56e0c | AR      | 2024-01-01   |             10 |           0 |           472.36 |            78.81 | f                | f               | t                      |                 1
+ 1933918c-fa74-4761-af18-c1081723199d | BR      | 2024-03-01   |             12 |           1 |           469.84 |            69.60 | f                | f               | t                      |                 1
+ a66fd7f7-3966-4fa7-9997-0043f3b1025b | MX      | 2024-01-01   |             11 |           1 |           463.84 |            37.75 | f                | f               | t                      |                 1
+(50 rows)
