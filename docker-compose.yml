@@ -55,6 +55,9 @@ x-airflow-common: &airflow-common
     - ./expectations:/opt/airflow/expectations
     - ./warehouse:/opt/airflow/warehouse
     - ./data:/opt/airflow/data
+    # Mounted so `pytest /opt/airflow/tests` inside the scheduler works.
+    - ./tests:/opt/airflow/tests
+    - ./blacklist_api:/opt/airflow/blacklist_api
   user: "${AIRFLOW_UID:-50000}:0"
 
 services:

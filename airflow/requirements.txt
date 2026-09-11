@@ -7,3 +7,7 @@ great-expectations==0.18.19
 minio==7.2.7
 httpx==0.27.2
 psycopg2-binary==2.9.9
+# Test deps (kept in this file so pytest runs inside the airflow image
+# without needing a second Python environment).
+pytest==8.3.3
+fastapi==0.115.0
