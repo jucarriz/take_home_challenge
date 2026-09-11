@@ -97,7 +97,12 @@ def _jdbc_url() -> str:
     host = os.getenv("POSTGRES_DWH_HOST", "postgres-dwh")
     port = os.getenv("POSTGRES_DWH_PORT", "5432")
     db = os.getenv("POSTGRES_DWH_DB", "aurelia_dwh")
-    return f"jdbc:postgresql://{host}:{port}/{db}"
+    # stringtype=unspecified lets Postgres infer the column type from the
+    # target schema. Without it, Spark sends every string as `character
+    # varying` and Postgres refuses to cast into UUID / DATE / TIMESTAMPTZ
+    # columns (strict typing). This is the standard workaround for
+    # Spark-JDBC-to-Postgres when the target has non-string types like UUID.
+    return f"jdbc:postgresql://{host}:{port}/{db}?stringtype=unspecified"
 
 
 def _jdbc_user() -> str:
