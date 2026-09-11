@@ -1,1 +1,29 @@
-docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "SELECT 'dim_customer' AS tbl, COUNT(*) FROM dim_customer UNION ALL SELECT 'dim_merchant', COUNT(*) FROM dim_merchant UNION ALL SELECT 'dim_date', COUNT(*) FROM dim_date UNION ALL SELECT 'fct_payments', COUNT(*) FROM fct_payments UNION ALL SELECT 'agg_daily_kpis', COUNT(*) FROM agg_daily_kpis UNION ALL SELECT 'agg_cohort_ltv', COUNT(*) FROM agg_cohort_ltv ORDER BY 1;"
+¿Es opcional testear Fase 6?
+Los archivos .sql son requisito del PDF ("Entregables: warehouse/queries/*.sql"), no opcionales. Lo que es "opcional" es testearlos automatizadamente: no vamos a escribir pytest para SQL puro (sería overkill — el test valdría lo mismo que la query en sí, y la única forma de que fallen es por typo, cosa que Postgres te dice al segundo).
+
+Lo que sí se hace es verificarlas a mano una vez: correrlas contra tu Postgres poblado y confirmar que devuelven algo coherente. Es de yapa — te da los outputs que podés meter como screenshots en el README (criterio "Modelo analítico y DWH" del PDF).
+
+Cómo probarlas (PowerShell, 2 min de trabajo)
+Necesitás Postgres corriendo con las tablas gold pobladas (o sea, después de haber corrido el DAG al menos una vez). Si acabás de hacer docker compose down -v, hay que levantar y triggerear el DAG primero.
+
+Si el stack ya está arriba:
+
+
+Get-Content warehouse/queries/auth_rate_daily.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+Deberías ver 91 filas (una por día, de 2024-01-01 a 2024-03-31).
+
+
+Get-Content warehouse/queries/chargeback_rate_by_merchant.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+Deberías ver hasta 20 merchants ordenados por chargeback_rate desc.
+
+
+Get-Content warehouse/queries/ltv_by_cohort.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+Deberías ver 9 filas (3 cohortes × 1-3 meses de retention).
+
+
+Get-Content warehouse/queries/high_risk_merchants.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+Deberías ver merchants con al menos un flag = true.
+
+
+Get-Content warehouse/queries/fraud_signals.sql | docker exec -i aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh
+Deberías ver hasta 50 customers, ordenados por signals_triggered desc (los que disparen 3 señales primero).
