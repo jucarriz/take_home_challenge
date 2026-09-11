@@ -1,124 +1,73 @@
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose up postgres-dwh -d
-[+] up 17/17
- ✔ Image postgres:15-alpine         Pulled                              97.0s
- ✔ Network aurelia_default          Created                              0.1s
- ✔ Volume aurelia_postgres-dwh-data Created                              0.0s
- ✔ Container aurelia-postgres-dwh   Started                              1.4s
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose logs postgres-dwh | Select-String "database system is ready"
+Smoke test de Fase 3
+0. Pre-requisitos
 
-aurelia-postgres-dwh  | 2026-09-11 14:32:31.806 UTC [41] LOG:  database 
-system is ready to accept connections
-aurelia-postgres-dwh  | 2026-09-11 14:32:32.652 UTC [1] LOG:  database 
-system is ready to accept connections
+cd <ruta-al-repo>
+git pull                       # traé fase 3 + este script
+python scripts/generate_data.py   # si data/raw/ está vacío
+1. Levantar todo el stack (nuevo build por el psycopg2-binary agregado)
 
+docker compose up -d --build
+Primera vez tarda 5–8 min (rebuild del image de Airflow con Java + Python deps).
 
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "\dt"
-             List of relations
- Schema |      Name      | Type  |  Owner  
---------+----------------+-------+---------
- public | agg_cohort_ltv | table | aurelia
- public | agg_daily_kpis | table | aurelia
- public | dim_customer   | table | aurelia
- public | dim_date       | table | aurelia
- public | dim_merchant   | table | aurelia
- public | fct_payments   | table | aurelia
-(6 rows)
+Esperá hasta que todo esté verde:
 
 
-What's next:
-    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug aurelia-postgres-dwh
-    Learn more at https://docs.docker.com/go/debug-cli/
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "\di"
-                           List of relations
- Schema |           Name            | Type  |  Owner  |     Table      
---------+---------------------------+-------+---------+----------------
- public | agg_cohort_ltv_pkey       | index | aurelia | agg_cohort_ltv
- public | agg_daily_kpis_pkey       | index | aurelia | agg_daily_kpis
- public | dim_customer_pkey         | index | aurelia | dim_customer
- public | dim_date_pkey             | index | aurelia | dim_date
- public | dim_merchant_pkey         | index | aurelia | dim_merchant
- public | fct_payments_pkey         | index | aurelia | fct_payments
- public | idx_dim_customer_cohort   | index | aurelia | dim_customer
- public | idx_dim_customer_country  | index | aurelia | dim_customer
- public | idx_dim_merchant_category | index | aurelia | dim_merchant
- public | idx_dim_merchant_risk     | index | aurelia | dim_merchant
- public | idx_fct_payments_customer | index | aurelia | fct_payments
- public | idx_fct_payments_date     | index | aurelia | fct_payments
- public | idx_fct_payments_merchant | index | aurelia | fct_payments
- public | idx_fct_payments_status   | index | aurelia | fct_payments
-(14 rows)
+docker compose ps
+Todos los servicios deben decir running y los con healthcheck (healthy).
+
+2. Correr el pipeline end-to-end
+
+docker exec -it aurelia-airflow-scheduler python /opt/airflow/scripts/run_pipeline.py --ds 2024-03-15
+Primera ejecución tarda ~2–3 min extra por la descarga de los JARs de Spark (hadoop-aws, aws-java-sdk-bundle, postgresql) al cache Ivy. Vas a ver logs como:
 
 
-What's next:
-    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug aurelia-postgres-dwh
-    Learn more at https://docs.docker.com/go/debug-cli/
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose up minio-init -d
-[+] up 20/20
- ✔ Image minio/minio:RELEASE.2024-08-17T01-24-54Z Pulled                                     46.8s
- ✔ Image minio/mc:RELEASE.2024-08-17T11-33-50Z    Pulled                                     30.1s
- ✔ Volume aurelia_minio-data                      Created                                     0.0s
- ✔ Container aurelia-minio                        Healthy                                    12.6s
- ✔ Container aurelia-minio-init                   Started                                    11.7s
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose up blacklist-api --build -d
-[+] Building 83.8s (13/13) FINISHED                                                               
- => [internal] load local bake definitions                                                   0.0s
- => => reading from stdin 651B                                                               0.0s
- => [internal] load build definition from Dockerfile                                         0.1s
- => => transferring dockerfile: 472B                                                         0.0s
- => [internal] load metadata for docker.io/library/python:3.11-slim                          6.3s
- => [auth] library/python:pull token for registry-1.docker.io                                0.0s
- => [internal] load .dockerignore                                                            0.3s
- => => transferring context: 2B                                                              0.0s
- => [1/5] FROM docker.io/library/python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a  39.8s
- => => resolve docker.io/library/python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a2  0.3s
- => => sha256:f9efa1b83d065a7c5a3041582875b75d63c4ab3d4413514de8e413b51f90e91a 249B / 249B   0.4s
- => => sha256:db840d086b65cf73e0feea3bd0cf11063818114e466846ae3f2b2fb1a8 14.45MB / 14.45MB  28.8s
- => => sha256:3678bb828654fcc3752f7a5eb63c5accfa00c97047252f25405285550d74 4.27MB / 4.27MB  10.4s
- => => sha256:6310eb16bf4251731feab01e8f633bf5e2d75a657ccad97f420b1f83cc 29.79MB / 29.79MB  35.1s
- => => extracting sha256:6310eb16bf4251731feab01e8f633bf5e2d75a657ccad97f420b1f83cce457be    1.7s
- => => extracting sha256:3678bb828654fcc3752f7a5eb63c5accfa00c97047252f25405285550d74a3fd    0.4s
- => => extracting sha256:db840d086b65cf73e0feea3bd0cf11063818114e466846ae3f2b2fb1a8c2b143    1.3s
- => => extracting sha256:f9efa1b83d065a7c5a3041582875b75d63c4ab3d4413514de8e413b51f90e91a    0.1s
- => [internal] load build context                                                            0.6s
- => => transferring context: 1.42kB                                                          0.0s
- => [2/5] WORKDIR /app                                                                       2.5s
- => [3/5] COPY requirements.txt .                                                            0.2s
- => [4/5] RUN pip install --no-cache-dir -r requirements.txt                                28.3s
- => [5/5] COPY main.py .                                                                     0.1s 
- => exporting to image                                                                       4.2s 
- => => exporting layers                                                                      2.7s 
- => => exporting manifest sha256:e159366f7fdba7d0cb0b494445b6e38df2153047493e582cb79235a8a9  0.0s 
- => => exporting config sha256:68d898f813016bc9d0126cef1a87b5484f1e1408d596849cdd34acba3049  0.0s 
- => => exporting attestation manifest sha256:cc8cd45829b4e2dc63c844e732266f2c69fa4260acc658  0.0s 
- => => exporting manifest list sha256:406b72fac32795c8e2b91209d431a4b305dc6ee160f08e190f49c  0.0s
- => => naming to docker.io/aurelia/blacklist-api:local                                       0.0s
- => => unpacking to docker.io/aurelia/blacklist-api:local                                    1.2s
- => resolving provenance for metadata file                                                   0.0s
-[+] up 2/2
- ✔ Image aurelia/blacklist-api:local Built                                                   85.5s
- ✔ Container aurelia-blacklist-api   Started                                                  0.9s
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> curl.exe http://localhost:8000/healthz
-{"status":"ok"}
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> curl.exe http://localhost:8000/v1/blacklist
-{"blacklisted_customer_ids":["06f028ff-a9ba-4a27-907b-fe36978648f8","366eb16f-508e-4ad7-b7c9-3acfe059a0ee","3f4df561-f319-4125-87f1-94f9c1156d6d","56abf2f1-43d8-4870-b81d-baa1c8120a8e","70c2903f-7a8d-43aa-b82a-65e048ca7651","d342af08-0a8b-45b4-9049-4583ec86a890","e238fe93-bd17-45e8-95ca-69ab8a2e6a93","edd877c8-9be7-4737-86b8-92318e867f3c","ef4c5119-8da5-439b-82c2-17970426fcc9","fb10987f-20ac-4703-ab67-146a77a6e17c"],"updated_at":"2024-03-31T23:59:59+00:00"}
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> Move-Item data/raw/blacklist.json $env:TEMP/
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> curl.exe -i http://localhost:8000/v1/blacklist
-HTTP/1.1 503 Service Unavailable
-date: Fri, 11 Sep 2026 14:41:35 GMT
-server: uvicorn
-content-length: 149
-content-type: application/json
+2026-09-11 ... INFO run_pipeline: =========== BRONZE ===========
+2026-09-11 ... INFO spark.jobs.bronze_ingest: bronze customers -> s3a://bronze/customers/dt=2024-03-15/ (500 rows)
+2026-09-11 ... INFO spark.jobs.bronze_ingest: bronze merchants -> s3a://bronze/merchants/dt=2024-03-15/ (50 rows)
+...
+2026-09-11 ... INFO run_pipeline: =========== SILVER ===========
+2026-09-11 ... INFO spark.jobs.silver_clean: silver refresh done for ds=2024-03-15
+2026-09-11 ... INFO run_pipeline: =========== GOLD ===========
+2026-09-11 ... INFO spark.common.io: (varios inserts JDBC)
+2026-09-11 ... INFO run_pipeline: Pipeline finished for ds=2024-03-15
+3. Verificaciones
+MinIO (http://localhost:9001, minioadmin/minioadmin):
 
-{"detail":"Blacklist file not found at /data/raw/blacklist.json. Run scripts/generate_data.py (the pipeline's first DAG task) to seed the raw data."}
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> Move-Item $env:TEMP/blacklist.json data/raw/
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose down
-[+] down 5/5
- ✔ Container aurelia-minio-init    Removed                                                    0.1s
- ✔ Container aurelia-postgres-dwh  Removed                                                    0.9s
- ✔ Container aurelia-blacklist-api Removed                                                    0.9s
- ✔ Container aurelia-minio         Removed                                                    0.6s
- ✔ Network aurelia_default         Removed                                                    0.3s
-PS C:\Users\Juamp\OneDrive\Desktop\proyectos\take_home_challenge> docker compose down -v 
-[+] down 2/2
- ✔ Volume aurelia_minio-data        Removed                                                   0.0s
- ✔ Volume aurelia_postgres-dwh-data Removed   
+Bucket bronze: 7 subcarpetas (customers, merchants, payments, chargebacks, fx_rates, events, blacklist), cada una con dt=2024-03-15/ conteniendo part-*.parquet.
+Bucket silver: mismas 7 subcarpetas, sin partición.
+Postgres — conteos por tabla:
+
+
+docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "SELECT 'dim_customer' AS tbl, COUNT(*) FROM dim_customer UNION ALL SELECT 'dim_merchant', COUNT(*) FROM dim_merchant UNION ALL SELECT 'dim_date', COUNT(*) FROM dim_date UNION ALL SELECT 'fct_payments', COUNT(*) FROM fct_payments UNION ALL SELECT 'agg_daily_kpis', COUNT(*) FROM agg_daily_kpis UNION ALL SELECT 'agg_cohort_ltv', COUNT(*) FROM agg_cohort_ltv ORDER BY 1;"
+Esperado aproximado:
+
+Tabla	Rows
+dim_customer	500
+dim_merchant	50
+dim_date	91 (Jan 1 – Mar 31)
+fct_payments	~4950–5000 (pueden caer algunos por FX/FK)
+agg_daily_kpis	91 (uno por día)
+agg_cohort_ltv	6–9 (3 meses de cohorte × 1–3 months_since_signup)
+Sample de métricas:
+
+
+docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "SELECT date_key, total_payments, auth_rate, chargeback_rate, ROUND(gross_volume_usd, 2) AS gross_usd FROM agg_daily_kpis ORDER BY date_key LIMIT 5;"
+Esperado: auth_rate alrededor de 0.80–0.85 (nuestro seed usa 82% captured por default) y chargeback_rate alrededor de 0.03–0.05.
+
+4. Test de idempotencia (el más importante)
+
+docker exec -it aurelia-airflow-scheduler python /opt/airflow/scripts/run_pipeline.py --ds 2024-03-15
+Correlo dos veces. Los conteos de Postgres deben ser exactamente los mismos (no debe duplicar rows). Ese es el criterio de "idempotencia" que pide el PDF.
+
+5. Cleanup
+Si querés borrar todo y empezar de cero:
+
+
+docker compose down -v
+Cosas que pueden fallar y qué mirar
+Síntoma	Causa probable	Fix
+Timeout descargando JARs de Spark	Sin internet en el container o corta iterable	Reintentar; los JARs caché en /home/airflow/.ivy2/
+Connection refused a minio:9000	MinIO no healthy todavía	docker compose ps, esperá
+FATAL: password authentication failed for user "aurelia"	.env difiere del compose default	Chequeá .env
+payments.csv not found	Seed no corrió	python scripts/generate_data.py local
+Rows duplicadas en re-run	Bug de idempotencia en gold_marts	avisame el output exacto
