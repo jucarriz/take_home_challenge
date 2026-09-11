@@ -138,6 +138,12 @@ services:
     container_name: aurelia-blacklist-api
     ports:
       - "8000:8000"
+    environment:
+      # File is written by scripts/generate_data.py (first DAG task).
+      # Until then, GET /v1/blacklist returns 503.
+      BLACKLIST_JSON_PATH: /data/raw/blacklist.json
+    volumes:
+      - ./data:/data:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"]
       interval: 10s
