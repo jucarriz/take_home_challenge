@@ -1,0 +1,66 @@
+0. Prep (una sola vez)
+
+cd <ruta-al-repo>
+Copy-Item .env.example .env
+1. Seed local + determinismo
+
+python scripts/generate_data.py
+Get-ChildItem data/raw/
+Esperado: 7 archivos (+ .gitkeep).
+
+
+Get-FileHash data/raw/payments.csv -Algorithm MD5
+python scripts/generate_data.py --force
+Get-FileHash data/raw/payments.csv -Algorithm MD5
+Esperado: el mismo hash en las dos corridas.
+
+2. Postgres DWH + DDL
+
+docker compose up postgres-dwh -d
+docker compose logs postgres-dwh | Select-String "database system is ready"
+Esperado: al menos una línea con database system is ready to accept connections (esperá ~10 s si es la primera vez).
+
+
+docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "\dt"
+Esperado (6 tablas): agg_cohort_ltv, agg_daily_kpis, dim_customer, dim_date, dim_merchant, fct_payments.
+
+
+docker exec -it aurelia-postgres-dwh psql -U aurelia -d aurelia_dwh -c "\di"
+Esperado: 8 índices idx_* + los índices de las PKs.
+
+3. MinIO + buckets
+
+docker compose up minio-init -d
+docker compose logs minio-init
+Esperado: log con MinIO buckets ready.
+
+Abrí en el browser: http://localhost:9001 (usuario minioadmin / pass minioadmin). Deberías ver 3 buckets vacíos: bronze, silver, gold.
+
+4. Blacklist API
+Con el seed del paso 1 ya corrido (para que exista data/raw/blacklist.json):
+
+
+docker compose up blacklist-api --build -d
+curl.exe http://localhost:8000/healthz
+curl.exe http://localhost:8000/v1/blacklist
+Esperado:
+
+/healthz → {"status":"ok"}
+/v1/blacklist → JSON con 10 UUIDs.
+Verificá el error 503 cuando falta el archivo:
+
+
+Move-Item data/raw/blacklist.json $env:TEMP/
+curl.exe -i http://localhost:8000/v1/blacklist
+Move-Item $env:TEMP/blacklist.json data/raw/
+Esperado: HTTP/1.1 503 Service Unavailable con un mensaje que apunta a scripts/generate_data.py.
+
+Bonus: Swagger UI auto-generado en http://localhost:8000/docs.
+
+5. Cleanup
+
+docker compose down          # apaga servicios, conserva volumes
+docker compose down -v       # apaga y borra postgres/minio data (para empezar de cero)
+Recordatorio del atajo: si querés ir rápido, hacé solo los pasos 1 (seed) y 2 (Postgres). Los pasos 3 y 4 se verifican transitivamente cuando corramos el DAG completo en Fase 4.
+
+Si alguno rompe, mandame el error exacto de PowerShell y lo arreglamos antes de meter Spark.
