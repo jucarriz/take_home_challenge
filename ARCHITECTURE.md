@@ -57,7 +57,12 @@ flowchart LR
 | Silver | MinIO (S3)          | Parquet        | none (snapshot)    | Casts, UTC timestamps, FK integrity, FX priced in USD, denormalized CBs. |
 | Gold   | Postgres 15         | Tables (star)  | none (small)       | Analytics-ready. FKs enforced. Aggregates pre-computed.                  |
 
-## The DAG
+## The DAGs
+
+Two DAGs coexist. The batch one is the main flow; the streaming one
+is an independent add-on demonstrating the event-driven pattern.
+
+### `aurelia_daily` — batch
 
 ```mermaid
 flowchart LR
@@ -83,6 +88,32 @@ Each validate task is a Great Expectations suite that raises on
 failure, breaking the chain and preventing downstream layers from
 being materialized on bad data.
 
+### `aurelia_streaming` — Kafka + Structured Streaming
+
+```mermaid
+flowchart LR
+    P[produce_events<br/>kafka-python producer] --> C[consume_stream<br/>Spark Structured Streaming<br/>trigger=availableNow]
+
+    RAW[(events.jsonl)] -.reads.-> P
+    P -.publishes.-> TOPIC[[Kafka topic<br/>aurelia.events]]
+    TOPIC -.subscribes.-> C
+    C -.writes.-> BRONZE[(s3a://bronze/events_stream/)]
+
+    style TOPIC fill:#fff4e6,stroke:#cc7700
+```
+
+- **Schedule**: `*/5 * * * *` (every 5 minutes), `catchup=False`,
+  `max_active_runs=1`.
+- **Producer** emits at 20 ms/message so the flow is visible in
+  Kafka-UI (~40 s per micro-batch of 2000 events).
+- **Consumer** uses `trigger=availableNow` and persists its offsets
+  in a Spark checkpoint on a docker volume (not on S3, to avoid
+  atomic-rename quirks of S3A with Structured Streaming).
+- **Silver `_read_bronze_events_unioned`** joins the batch source
+  (`bronze/events/dt=<ds>/`) with the streaming source
+  (`bronze/events_stream/`) and dedupes on `event_id` — so if the
+  streaming DAG never runs, silver still works from batch alone.
+
 ## Services (docker-compose)
 
 ```mermaid
@@ -103,6 +134,9 @@ flowchart TB
         MINIT[minio-init<br/>one-shot: create buckets]
 
         API[blacklist-api<br/>:8000<br/>FastAPI mock]
+
+        KAFKA[(kafka<br/>:9092 internal<br/>KRaft, no ZK)]
+        KUI[kafka-ui<br/>:8081<br/>Provectus web UI]
     end
 
     AWEB --> PGA
@@ -111,6 +145,8 @@ flowchart TB
     ASCH --> PGD
     ASCH --> MINIO
     ASCH --> API
+    ASCH --> KAFKA
+    KUI --> KAFKA
     MINIT --> MINIO
 ```
 
@@ -123,7 +159,9 @@ flowchart TB
 | `blacklist-api`    | `python:3.11-slim` + FastAPI       | Serves `/v1/blacklist` from `data/raw/blacklist.json`     |
 | `airflow-init`     | `aurelia/airflow:local` (custom)   | Runs `airflow db migrate` and creates admin user          |
 | `airflow-webserver`| `aurelia/airflow:local` (custom)   | UI on `:8080`                                             |
-| `airflow-scheduler`| `aurelia/airflow:local` (custom)   | Runs the DAG. Also hosts Spark in `local[*]` mode         |
+| `airflow-scheduler`| `aurelia/airflow:local` (custom)   | Runs the DAGs. Also hosts Spark in `local[*]` mode        |
+| `kafka`            | `bitnami/kafka:3.7`                | Single-node broker in KRaft mode (no Zookeeper)           |
+| `kafka-ui`         | `provectuslabs/kafka-ui`           | Web UI for the Kafka broker on `:8081`                    |
 
 Custom Airflow image = official `apache/airflow:2.9.3-python3.11` +
 Java (JRE for PySpark) + `pyspark`, `great-expectations`, `minio`,

@@ -163,13 +163,41 @@ def _enrich_payments(
 
 # ---- Entry point ----------------------------------------------------------
 
+def _read_bronze_events_unioned(spark: SparkSession, ds: str) -> DataFrame:
+    """Union batch-ingested events with streaming-ingested events.
+
+    Batch events land under ``s3a://bronze/events/dt=<ds>/`` via the
+    daily DAG. Streaming events land under ``s3a://bronze/events_stream/``
+    via the ``aurelia_streaming`` DAG. Both may contain the same
+    ``event_id`` (the streaming producer replays the same file), so we
+    ``dropDuplicates`` after the union.
+
+    If the streaming path does not exist yet (streaming DAG never ran),
+    fall back to the batch source alone.
+    """
+    batch = io.read_bronze(spark, "events", ds)
+
+    try:
+        stream = spark.read.parquet(f"s3a://{io.BUCKET_BRONZE}/events_stream/")
+    except Exception as exc:  # noqa: BLE001 — Spark wraps FS errors variably
+        LOG.info(
+            "No streaming events available yet (%s); using batch only",
+            type(exc).__name__,
+        )
+        return batch
+
+    stream_aligned = stream.select("event_id", "customer_id", "type", "event_ts")
+    return batch.unionByName(stream_aligned, allowMissingColumns=True) \
+                .dropDuplicates(["event_id"])
+
+
 def transform_silver(spark: SparkSession, ds: str) -> None:
     bronze_customers = io.read_bronze(spark, "customers", ds)
     bronze_merchants = io.read_bronze(spark, "merchants", ds)
     bronze_payments = io.read_bronze(spark, "payments", ds)
     bronze_chargebacks = io.read_bronze(spark, "chargebacks", ds)
     bronze_fx = io.read_bronze(spark, "fx_rates", ds)
-    bronze_events = io.read_bronze(spark, "events", ds)
+    bronze_events = _read_bronze_events_unioned(spark, ds)
     bronze_blacklist = io.read_bronze(spark, "blacklist", ds)
 
     customers = _clean_customers(bronze_customers)

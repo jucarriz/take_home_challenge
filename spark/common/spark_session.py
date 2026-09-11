@@ -17,11 +17,13 @@ from pyspark.sql import SparkSession
 HADOOP_AWS_VERSION = "3.3.4"
 AWS_SDK_VERSION = "1.12.262"
 POSTGRES_JDBC_VERSION = "42.7.3"
+SPARK_KAFKA_VERSION = "3.5.1"  # matches PySpark 3.5.1 / Scala 2.12
 
 _PACKAGES = ",".join([
     f"org.apache.hadoop:hadoop-aws:{HADOOP_AWS_VERSION}",
     f"com.amazonaws:aws-java-sdk-bundle:{AWS_SDK_VERSION}",
     f"org.postgresql:postgresql:{POSTGRES_JDBC_VERSION}",
+    f"org.apache.spark:spark-sql-kafka-0-10_2.12:{SPARK_KAFKA_VERSION}",
 ])
 
 

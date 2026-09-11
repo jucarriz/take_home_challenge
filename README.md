@@ -33,13 +33,17 @@ The pipeline delivers:
   transformations, and the FastAPI mock.
 - **FastAPI mock** of the external `/v1/blacklist` endpoint consumed
   by the bronze layer.
+- **Kafka streaming track** (parallel to the batch path) — a Python
+  producer publishes events to a Kafka topic and Spark Structured
+  Streaming lands them under `s3a://bronze/events_stream/`. Silver
+  unions the batch and streaming events and dedupes on `event_id`.
 - Everything **dockerized** — one command spins up the whole stack
-  (Airflow, Postgres, MinIO, blacklist API).
+  (Airflow, Postgres, MinIO, blacklist API, Kafka, Kafka-UI).
 
 ## Prerequisites
 
 - **Docker Desktop** (Windows or macOS) with WSL 2 enabled on Windows.
-- Free ports on the host: `5432`, `5433`, `8000`, `8080`, `9000`, `9001`.
+- Free ports on the host: `5432`, `5433`, `8000`, `8080`, `8081`, `9000`, `9001`.
 - ~6 GB of RAM available for the Docker VM.
 - No local Python or Java install required — everything runs in
   containers.
@@ -59,6 +63,7 @@ Once every service is healthy (`docker compose ps` shows all
 
 - **Airflow UI**: <http://localhost:8080> (login `admin` / `admin`)
 - **MinIO Console**: <http://localhost:9001> (login `minioadmin` / `minioadmin`)
+- **Kafka-UI**: <http://localhost:8081> (no auth)
 - **Blacklist API docs**: <http://localhost:8000/docs>
 
 To trigger a pipeline run:
@@ -111,15 +116,17 @@ customers sign up over time):
 .
 ├── airflow/
 │   ├── Dockerfile              custom Airflow image (Java + PySpark + GE)
-│   ├── requirements.txt        runtime deps + test deps (pytest, fastapi)
+│   ├── requirements.txt        runtime deps + test deps (pytest, fastapi, kafka)
 │   └── dags/
-│       └── aurelia_daily.py    the only DAG
+│       ├── aurelia_daily.py    batch pipeline (bronze -> silver -> gold)
+│       └── aurelia_streaming.py Kafka producer + Spark Structured Streaming
 ├── spark/
 │   ├── common/                 SparkSession builder, IO, schemas
 │   └── jobs/
 │       ├── bronze_ingest.py    raw -> s3a://bronze/<t>/dt=<ds>/
 │       ├── silver_clean.py     bronze -> s3a://silver/<t>/
-│       └── gold_marts.py       silver -> Postgres (star schema)
+│       ├── gold_marts.py       silver -> Postgres (star schema)
+│       └── stream_events.py    Kafka -> s3a://bronze/events_stream/
 ├── expectations/
 │   ├── suites.py               26 GE expectations for payments
 │   └── runner.py               EphemeralDataContext runner (raises on fail)
@@ -129,13 +136,14 @@ customers sign up over time):
 ├── blacklist_api/              FastAPI mock of /v1/blacklist
 ├── scripts/
 │   ├── generate_data.py        deterministic seed (stdlib only)
-│   └── run_pipeline.py         CLI to run the pipeline without Airflow
+│   ├── produce_events.py       Kafka producer for the streaming DAG
+│   └── run_pipeline.py         CLI to run the batch pipeline without Airflow
 ├── tests/                      16 pytest tests
 ├── data/raw/                   generated CSVs / JSONL / JSON
 ├── terraform/                  IaC for the MinIO buckets (optional path)
-├── docker-compose.yml          8 services (dwh, airflow-metadata, minio,
-│                               minio-init, blacklist-api, airflow-init,
-│                               airflow-webserver, airflow-scheduler)
+├── docker-compose.yml          10 services (dwh, airflow-metadata, minio,
+│                               minio-init, blacklist-api, kafka, kafka-ui,
+│                               airflow-init, airflow-webserver, airflow-scheduler)
 └── docs/screenshots/           images referenced by this README
 ```
 
@@ -191,10 +199,6 @@ because it materializes to Postgres.
 
 ## Areas to improve / future work
 
-- **Kafka streaming track** was left out to keep the scope focused
-  on the batch path. Wiring: a Kafka broker in docker-compose, a
-  producer that emits `events.jsonl` line by line, a Spark
-  Structured Streaming reader landing into bronze.
 - **`fct_events` in gold.** Events (login / failed_pin /
   password_reset) are cleaned in silver but not materialized in gold.
   Adding them would let `fraud_signals.sql` combine an "authentication
@@ -207,6 +211,27 @@ because it materializes to Postgres.
   API + a file store would give a browseable data-quality dashboard.
 - **Partitioning of `fct_payments` in Postgres.** For higher volumes
   the fact table would benefit from `PARTITION BY RANGE (date_key)`.
+
+## Streaming track (Kafka)
+
+The `aurelia_streaming` DAG runs every 5 minutes and demonstrates the
+event-driven side of the platform:
+
+1. **`produce_events`** — reads `data/raw/events.jsonl` and publishes
+   each event to the Kafka topic `aurelia.events` with a 20 ms delay
+   between messages (so the flow is visible in Kafka-UI). Uses
+   `customer_id` as the message key.
+2. **`consume_stream`** — Spark Structured Streaming with
+   `trigger=availableNow`. Reads the topic from the last committed
+   offset (checkpoint on a docker volume) and writes new messages as
+   Parquet under `s3a://bronze/events_stream/`.
+
+The batch DAG `aurelia_daily` continues to ingest the same file into
+`s3a://bronze/events/dt=<ds>/`. Silver unions both sources and dedupes
+on `event_id`, so the two paths coexist without conflict — a
+convenient demo of "batch and streaming from the same source of truth".
+
+Open <http://localhost:8081> to see messages arriving in the topic.
 
 ## Infrastructure as Code
 
@@ -244,6 +269,8 @@ deployments should override the credentials.
 - pytest 8.3.3
 - Docker Compose
 - Terraform 1.5+ (optional — declarative management of the MinIO buckets)
+- Apache Kafka 3.7 (Bitnami KRaft, no Zookeeper) + Kafka-UI (Provectus)
+- `kafka-python` 2.0.2 (producer) + Spark `spark-sql-kafka-0-10_2.12:3.5.1` (consumer)
 
 ## Endpoints once the stack is up
 
@@ -251,6 +278,7 @@ deployments should override the credentials.
 | ---------------- | ------------------------------- | ----------------------------- |
 | Airflow UI       | <http://localhost:8080>         | `admin` / `admin`             |
 | MinIO Console    | <http://localhost:9001>         | `minioadmin` / `minioadmin`   |
+| Kafka-UI         | <http://localhost:8081>         | —                             |
 | Blacklist API    | <http://localhost:8000/docs>    | —                             |
 | Postgres DWH     | `localhost:5432/aurelia_dwh`    | `aurelia` / `aurelia`         |
 | Postgres Airflow | `localhost:5433/airflow`        | `airflow` / `airflow`         |
