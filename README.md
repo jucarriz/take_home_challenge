@@ -81,6 +81,35 @@ docker exec -it aurelia-airflow-scheduler \
     python /opt/airflow/scripts/run_pipeline.py --ds 2024-03-15
 ```
 
+## Troubleshooting
+
+Common pitfalls when bringing the stack up for the first time:
+
+- **Wait for every service to be `healthy` before triggering the DAG.**
+  `docker compose ps` must show every service in `healthy` state. The
+  scheduler starts before Kafka and Postgres finish their init; if you
+  trigger `aurelia_daily` too early you'll see connection errors that
+  vanish on their own a few seconds later — but they can look like
+  real bugs.
+- **First build takes 5-8 minutes.** The custom Airflow image installs
+  Java (JRE), PySpark and the Kafka JARs. Subsequent `docker compose
+  up -d` calls are seconds because Docker caches the layers.
+- **Windows / WSL2 memory.** Give WSL2 at least 6 GB of RAM in
+  `%UserProfile%\.wslconfig`, otherwise the Airflow scheduler container
+  OOM-loops while booting the Spark JVM:
+  ```ini
+  [wsl2]
+  memory=8GB
+  ```
+  Then `wsl --shutdown` from PowerShell and start Docker Desktop again.
+- **Port conflicts.** The 7 host ports listed in *Prerequisites*
+  (`5432`, `5433`, `8000`, `8080`, `8081`, `9000`, `9001`) must be
+  free. Kafka runs only inside the compose network on `9092`, so no
+  host port is needed for the broker itself.
+- **`docker exec -it` from a shell without a TTY.** Some IDE terminals
+  and CI runners don't allocate a TTY. Drop the `-t` flag if you get
+  `the input device is not a TTY`: `docker exec -i ...`.
+
 ## How to run the tests
 
 ```bash
