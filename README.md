@@ -269,7 +269,7 @@ deployments should override the credentials.
 - pytest 8.3.3
 - Docker Compose
 - Terraform 1.5+ (optional — declarative management of the MinIO buckets)
-- Apache Kafka 3.7 (Bitnami KRaft, no Zookeeper) + Kafka-UI (Provectus)
+- Apache Kafka 3.7.2 (official ASF image, KRaft mode, no Zookeeper) + Kafka-UI (Provectus)
 - `kafka-python` 2.0.2 (producer) + Spark `spark-sql-kafka-0-10_2.12:3.5.1` (consumer)
 
 ## Endpoints once the stack is up

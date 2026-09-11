@@ -161,24 +161,33 @@ services:
     restart: unless-stopped
 
   kafka:
-    image: bitnami/kafka:3.7
+    # Official Apache Software Foundation image. Was originally on
+    # bitnami/kafka:3.7 but Bitnami removed free public tags in 2025,
+    # so we moved to the ASF-maintained image which stays public.
+    image: apache/kafka:3.7.2
     container_name: aurelia-kafka
     environment:
       # KRaft mode (no Zookeeper) — single-node broker + controller.
-      KAFKA_CFG_NODE_ID: "1"
-      KAFKA_CFG_PROCESS_ROLES: "broker,controller"
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Note: apache/kafka uses the plain KAFKA_ prefix (not KAFKA_CFG_,
+      # which is Bitnami-specific).
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Static cluster id for KRaft. Any 22-char base64 URL-safe string
+      # works; keeping it constant means state on the volume matches
+      # across container recreations.
+      CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
     volumes:
-      - kafka-data:/bitnami/kafka
+      - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 15

@@ -160,7 +160,7 @@ flowchart TB
 | `airflow-init`     | `aurelia/airflow:local` (custom)   | Runs `airflow db migrate` and creates admin user          |
 | `airflow-webserver`| `aurelia/airflow:local` (custom)   | UI on `:8080`                                             |
 | `airflow-scheduler`| `aurelia/airflow:local` (custom)   | Runs the DAGs. Also hosts Spark in `local[*]` mode        |
-| `kafka`            | `bitnami/kafka:3.7`                | Single-node broker in KRaft mode (no Zookeeper)           |
+| `kafka`            | `apache/kafka:3.7.2`               | Single-node broker in KRaft mode (no Zookeeper)           |
 | `kafka-ui`         | `provectuslabs/kafka-ui`           | Web UI for the Kafka broker on `:8081`                    |
 
 Custom Airflow image = official `apache/airflow:2.9.3-python3.11` +
