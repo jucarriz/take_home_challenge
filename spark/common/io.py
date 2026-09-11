@@ -113,6 +113,24 @@ def _jdbc_password() -> str:
     return os.getenv("POSTGRES_DWH_PASSWORD", "aurelia")
 
 
+def read_gold_table(spark: SparkSession, table: str) -> DataFrame:
+    """Read a gold table from Postgres via JDBC.
+
+    Useful for Great Expectations checks against the materialized gold
+    layer (bronze/silver checks read Parquet directly).
+    """
+    return (
+        spark.read
+        .format("jdbc")
+        .option("url", _jdbc_url())
+        .option("dbtable", table)
+        .option("user", _jdbc_user())
+        .option("password", _jdbc_password())
+        .option("driver", "org.postgresql.Driver")
+        .load()
+    )
+
+
 def write_gold(df: DataFrame, table: str) -> None:
     """Insert into a gold table via JDBC (append mode).
 

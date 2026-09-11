@@ -77,6 +77,20 @@ def aurelia_daily():
         finally:
             spark.stop()
 
+    @task(doc_md="Great Expectations suite `bronze_payments`. Blocks the DAG on failure.")
+    def validate_bronze() -> None:
+        from spark.common.spark_session import build_spark
+        from spark.common import io
+        from expectations.runner import validate
+
+        ds = get_current_context()["ds"]
+        spark = build_spark("aurelia-validate-bronze")
+        try:
+            df = io.read_bronze(spark, "payments", ds)
+            validate(df, "bronze_payments")
+        finally:
+            spark.stop()
+
     @task(doc_md="Cast to UTC, enforce FKs, price in USD, denormalize chargebacks.")
     def transform_silver() -> None:
         from spark.common.spark_session import build_spark
@@ -86,6 +100,19 @@ def aurelia_daily():
         spark = build_spark("aurelia-silver")
         try:
             silver_clean.transform_silver(spark, ds)
+        finally:
+            spark.stop()
+
+    @task(doc_md="Great Expectations suite `silver_payments`. Blocks the DAG on failure.")
+    def validate_silver() -> None:
+        from spark.common.spark_session import build_spark
+        from spark.common import io
+        from expectations.runner import validate
+
+        spark = build_spark("aurelia-validate-silver")
+        try:
+            df = io.read_silver(spark, "payments")
+            validate(df, "silver_payments")
         finally:
             spark.stop()
 
@@ -100,7 +127,28 @@ def aurelia_daily():
         finally:
             spark.stop()
 
-    generate_data() >> ingest_bronze() >> transform_silver() >> build_gold()
+    @task(doc_md="Great Expectations suite `gold_fct_payments`. Reads Postgres via JDBC.")
+    def validate_gold() -> None:
+        from spark.common.spark_session import build_spark
+        from spark.common import io
+        from expectations.runner import validate
+
+        spark = build_spark("aurelia-validate-gold")
+        try:
+            df = io.read_gold_table(spark, "fct_payments")
+            validate(df, "gold_fct_payments")
+        finally:
+            spark.stop()
+
+    (
+        generate_data()
+        >> ingest_bronze()
+        >> validate_bronze()
+        >> transform_silver()
+        >> validate_silver()
+        >> build_gold()
+        >> validate_gold()
+    )
 
 
 aurelia_daily()
